@@ -1,5 +1,9 @@
 # Random Files from my computer:computer:
 
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/SamueleFacenda/Python-Scripts/HEAD?labpath=birthdayParadox.ipynb)
+
+
 some intresting ones:sunglasses::
 * birthdayParadox:moyai:, jupyter notebook with plotting about the probability of two people having the same birthday date in a group of n people:chart_with_upwards_trend:.
 * teoremaMedia:memo:, manim video creator for a school presentation	:robot:
