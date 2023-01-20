@@ -1,7 +1,7 @@
-import pokebase as pb
+# import pokebase as pb
 from tqdm import tqdm, trange
 import os
-import time
+import requests as req
 
 # pip install pokebase, può dare problemi con versione python 3.10
 
@@ -41,7 +41,7 @@ def romanToDecimal(str):
             i = i + 1
     return res
 
-# legge un file, riscrive tutto e (dovrebbe essere un csv pokemon) ritorna il numero del'ultimo pokemon aggiunto
+# legge un file e (dovrebbe essere un csv pokemon) ritorna il numero dell'ultimo pokemon aggiunto
 def get_max_index(file):
     max_i = 0
     for line in file:
@@ -62,12 +62,16 @@ else:
 
 with open(path, "a" if exist else "w") as f:
     if not exist:
-        f.write("#,Name,Type 1,Type 2,Total,HP,Attack,Defense,Sp. Atk,Sp. Def,Speed,Generation,Legendary\n")
+        f.write("Name,Type 1,Type 2,Total,HP,Attack,Defense,Sp. Atk,Sp. Def,Speed,Generation,Legendary\n")
 
     for i in trange(max_i+1,1009):
         try:
-            tmp= pb.pokemon(i)
-            tmp_spec = pb.pokemon_species(i)
+            # tmp= pb.pokemon(i)
+            # tmp_spec = pb.pokemon_species(i)
+            url = " https://pokeapi.co/api/v2/pokemon-species/" + str(i)
+            tmp_spec = req.get(url).json()
+            url = " https://pokeapi.co/api/v2/pokemon/" + str(i)
+            tmp = req.get(url).json()
         except:
             print(i)
             break
@@ -75,17 +79,15 @@ with open(path, "a" if exist else "w") as f:
         f.write(",".join(
             [
                 str(i),
-                tmp.name.title(),
-                tmp.types[0].type.name,
-                tmp.types[1].type.name if len(tmp.types) != 1 else "",
-                str(-1),
+                tmp['name'],
+                tmp['types'][0]['type']['name'],
+                tmp['types'][1]['type']['name'] if len(tmp['types']) != 1 else "",
+                str(sum([x['base_stat'] for x in tmp['stats']])),
             ] +
-            [str(x.base_stat) for x in tmp.stats] + 
+            [str(x['base_stat']) for x in tmp['stats']] + 
             [
-                str(romanToDecimal(tmp_spec.generation.name.split("-")[1].upper())),
-                str(tmp_spec.is_legendary),
+                str(romanToDecimal(tmp_spec['generation']['name'].split("-")[1].upper())),
+                str(tmp_spec['is_legendary']),
                 "\n"
             ]
         ))
-
-

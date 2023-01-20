@@ -1,0 +1,1 @@
+stderr.txt patrol2.pyz
