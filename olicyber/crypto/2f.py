@@ -8,7 +8,7 @@ def expand_pin(pin):
 
 token = '06c8580019a5422c13b0c57b7484c518'
 token = bytes.fromhex(token)
-    
+
 passfrase = b"donttrustgabibbo"
 pins = [str(i).zfill(6).encode() for i in range(1000000)]
 pins = [(pin, expand_pin(pin)) for pin in pins]

