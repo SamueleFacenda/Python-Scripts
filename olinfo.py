@@ -12,7 +12,7 @@ headers = {
     'User-Agent': 'Valve Steam Gamepad' 
 }
 cookies = {
-    'training_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpZCI6MTU5OTQsInVzZXJuYW1lIjoiU2FtdWVsZUZhY2VuZGEiLCJlbWFpbCI6InNhbXVlbGUuZmFjZW5kYUBidW9uYXJyb3RpLnRuLml0IiwiZmlyc3ROYW1lIjoiU2FtdWVsZSIsImxhc3ROYW1lIjoiRmFjZW5kYSIsInBpY3R1cmUiOiIvL2dyYXZhdGFyLmNvbS9hdmF0YXIvNWRjOTgwMWIwM2U1MzJjMDBhM2NmZjAwMTYyNmY0YzM_ZD1pZGVudGljb24ifQ.CeI3Of_RcXChGcAS9ezuS6b-tFDmzn1CfN2-qSYZwF0'
+    'training_token': 'redacted'
 }
 
 def sendScript(script):

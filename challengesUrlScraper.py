@@ -38,19 +38,19 @@ with open('urls', 'wb') as f:
     pickle.dump(alls, f)
 
 
+# parallel dns resolution for all urls
 destinations = set()
 mutex = Lock()
 
-def resolve(domain, type):
-    global destinations
+def resolve(domain):
     global mutex
-    answers = resolver.resolve(domain, type)
+    answers = resolver.resolve(domain, 'A')
     for ans in answers:
         mutex.acquire()
         destinations.add(ans.address)
         mutex.release()
 
-threads = [Thread(target=resolve, args=[domain, 'A']) for domain in alls]
+threads = [Thread(target=resolve, args=[domain]) for domain in alls]
 for t in threads:
     t.start()
 for t in threads:
