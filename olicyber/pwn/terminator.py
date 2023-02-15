@@ -1,6 +1,7 @@
 from pwn import *
+from sys import argv
 
-remo = True
+remo = 'remo' in  argv[1]
 if remo:
     el = ELF('terminator_nopatch')
 else:
@@ -28,7 +29,9 @@ print(f'{offset=}')
 if remo:
     p = remote('terminator.challs.olicyber.it' ,10307)
 else:
-    p = process('./terminator')
+    p = process('./terminator_dbg')
+    log.info('Press Enter to continue the execution...')
+    input()
 # patchelf --set-interpreter "$(pwd)/ld-linux-x86-64.so.2" --set-rpath $(pwd) ./terminator
 # gli indico solo la cartella della libc, non il file
 # input()
