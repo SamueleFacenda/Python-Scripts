@@ -2,60 +2,56 @@ from Crypto.Cipher import AES
 from Crypto.Random.random import randint
 from hashlib import sha256
 from tqdm import trange, tqdm
-import socket
-from threading import Thread, Event, active_count
+from pwn import *
 
 HOST = '2fapp.challs.olicyber.it' 
 PORT = 12207
 
-def inf():
-    while True:
-        yield 1
+maxPin = 1000000
 
 def expand_pin(pin):
     return sha256(pin).digest()[:16]
 
-pswHex = 'a' * 32
-passfrase = bytes.fromhex(pswHex)
-pins = [str(i).zfill(6).encode() for i in range(1000000)]
-pins = [(pin, expand_pin(pin)) for pin in pins]
-decoded = {}
-for pin, expanded in tqdm(pins, leave=False, desc="Encrypting all pins"):
-    c1 = AES.new(expanded, AES.MODE_ECB)
-    decoded[c1.decrypt(passfrase).hex()] = pin
+pins = [str(i).zfill(6).encode() for i in range(1, maxPin)]
+aes = [(AES.new(expand_pin(pin), AES.MODE_ECB), pin) for pin in tqdm(pins, desc='Generating AES')]
 
-run_event = Event()
+zero = b'A'*16
 
-def tryLuck():
-    out = False
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((HOST, PORT))
-        s.sendall(b"3\nadmin\n" + pswHex.encode() + b"\n")
-        s.recv(127)
-        data = s.recv(60)
-        token = data.split(b'\n')[0][-32:]
-        if token in decoded:
-            # run_event.set()
-            pin = decoded[token]
-            print("User pin: ", pin)
-            s.sendall(b"2\nadmin\n" + pin.encode() + b"\n" + pin.encode() + b"\n")
-            with open('flag.txt', 'wb') as f:
-                while True:
-                    data = s.recv(1024)
-                    if not data:
-                        break
-                    f.write(data)
-            out = True
-    return out
+toSend = []
+table = {}
 
-MAX_THREADS = 1000
+# https://crypto.stackexchange.com/questions/42362/how-can-i-attack-a-triple-block-cipher-with-2-keys-like-3des-with-a-cost-of-%E2%89%A4
 
-for _ in tqdm(inf(), leave=False, desc="Trying all pins", total=1000000):
-    if run_event.is_set():
+for ae, i in tqdm(aes, desc='Decrypting'):
+    m2 = ae.decrypt(zero)
+    table[m2.hex()] = i
+    toSend.append('3\nadmin\n' + m2.hex() + '\n')
+
+toSend = ''.join(toSend)
+print('len(kB):', len(toSend)//1024)
+
+
+p = remote(HOST, PORT)
+# mando tutto insieme, così e' piu' veloce
+p.send(toSend.encode())
+print('mandato payload')
+
+uno = ''
+due = ''
+for ae, i in tqdm(aes, desc='Checking'):
+    p.recvuntil(b'DEBUG token calcolato: ')
+    token = p.recvline().decode().strip()
+    # decrypt and get S^-1_K2(0)
+    token = bytes.fromhex(token)
+    m2 = ae.decrypt(token).hex()
+    if m2 in table:
+        print('Found:', table[m2], i)
+        uno = i
+        due = table[m2]
         break
-    t = Thread(target=tryLuck)
-    t.start()
-    while active_count() > MAX_THREADS:
-        pass
-#    t = Thread(target=tryLuck)
-#    t.start()
+
+payload = b'2\nadmin\n' + uno + b'\n' + due + b'\n'
+p.send(payload)
+# faccio arrivare tutto le risposte schifo del server, che non mi servono piu'
+p.recvuntil(b'personale:', timeout=180)
+p.interactive()
