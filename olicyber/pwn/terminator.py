@@ -141,4 +141,3 @@ flag = p.recvuntil(b'}')
 flag = flag[flag.index(b'flag{'):].decode()
 p.close()
 print(flag)
-# funziona in locale ma non in remoto
