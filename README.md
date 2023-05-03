@@ -1,7 +1,10 @@
 # Random Files from my computer:computer:
 
-
+Birthday Paradox:
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/SamueleFacenda/Python-Scripts/HEAD?labpath=birthdayParadox.ipynb)
+
+Resnet Presentation:
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/SamueleFacenda/Python-Scripts/HEAD?labpath=tpsit%2Fresnet.ipynb)
 
 
 some intresting ones:sunglasses::
