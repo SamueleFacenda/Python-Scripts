@@ -1,6 +1,7 @@
 /media
 /.idea
 /iaia-cache
-/__pycache__
+__pycache__
 *.mp3
 *.mp4
+/tpsit/data/
