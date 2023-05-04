@@ -3,3 +3,6 @@ plotly
 tqdm
 pandas
 numpy
+torch
+torchvision
+sklearn
