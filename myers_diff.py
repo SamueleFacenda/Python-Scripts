@@ -7,6 +7,15 @@ ansi_reset = "\x1b[0m"
 uno = "In 1986, Eugene Myers published An O(ND) Difference Algoritm and Its Variations"
 due = "In 1987 Eugne Myers published And Osdf(ND) Difdfsfsfence Algorithm Its variations"
 
+with open("index.md") as f:
+    uno = f.read()
+
+with open("README.md") as f:
+    due = f.read()
+
+due = [x+'\n' for x in due.splitlines()]
+uno = [x+'\n' for x in uno.splitlines()]
+
 grid = [[1 if d==u else 0 for d in due]+[0] for u in uno]+ [[0 for _ in range(len(due)+1)]]
 
 bfs = deque()
