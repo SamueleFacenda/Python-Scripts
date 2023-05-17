@@ -17,7 +17,7 @@ assert rnd == pow(pow(rnd, e, N), d, N)
 # find phi
 
 prod = mpz(e) * mpz(d)
-# d * e = phi * k, k is an integer, smaller than e
+# d * e = phi * k + 1, k is an integer, smaller than e
 
 for i in range(1, e):
     if prod % i == 1:
