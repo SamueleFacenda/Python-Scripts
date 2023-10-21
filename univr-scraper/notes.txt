@@ -1,0 +1,9 @@
+
+
+https://www.corsi.univr.it/?ent=cs&id=474&menu=studiare&tab=orario-lezioni&lang=it
+
+ <a href="/documenti/VoceMenuCS/documento/documento305319.pdf" style=" display: flex; align-items: center; ">
+	   <img src="image/icona_pdf.png" alt="Doc_Univr_pdf" width="32" height="32" class="mr-2">
+	    Orario 1° anno 1° semestre a.a. 23-24 agg. 19/10
+    </a>
+    
