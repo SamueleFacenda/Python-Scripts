@@ -1,6 +1,8 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
+from threading import Thread, Lock
+from functools import partial
 
 class Player:
     def __init__(self, name):
@@ -184,9 +186,21 @@ def get_tornei_matches(reg):
 def get_campionati_matches(reg):
     campionati = get_campionati(reg)
     out = []
+    out_lock = Lock()
+    threads = []
     for campionato in campionati.values():
-        out += get_girone_matches(campionato["CAM"], get_anno_campionato(campionato["CAM"]))
+        func = partial(get_campionati_matches_threaded, campionato["CAM"], out, out_lock)
+        threads.append(Thread(target=func))
+        threads[-1].start()
+
+    for thread in threads: thread.join()
     return out
+
+def get_campionati_matches_threaded(cmp, out, out_lock):
+    anno = get_anno_campionato(cmp)
+    tmp = get_girone_matches(cmp, anno)
+    with out_lock:
+        out += tmp
 
 
 def get_anno_campionato(campionato):
