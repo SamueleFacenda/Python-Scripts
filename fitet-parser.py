@@ -9,6 +9,7 @@ class Player:
 
 players: dict[str, Player] = {}
 def get_player(name):
+    name = name.strip().title()
     if name in players:
         return players[name]
     else:
@@ -16,24 +17,25 @@ def get_player(name):
         return players[name]    
 
 class Match:
-    def __init__(self, one, two, score: list[tuple[int, int]]):
+    def __init__(self, one, two, score: list[tuple[int, int]], date=None):
         self.one: Player = one
         self.two: Player = two
         self.score: list[tuple[int, int]] = score
+        self.date = date
         # print(f"Created match {one.name} vs {two.name} with score {score}")
 
     def __str__(self):
-        return f"{self.one.name} vs {self.two.name} with score {self.score}"
+        return f"{self.date}: {self.one.name} vs {self.two.name} with score {self.score}"
 
 
-url = "https://portale.fitet.org/"
+URL = "https://portale.fitet.org/"
 
 def parse_url(url):
     params = url.split("?")[-1].split("&")
     return {param.split("=")[0] : param.split("=")[1] for param in params}
 
 def get_regioni():
-    menu = r.get(url + "menu.php").text
+    menu = r.get(URL + "menu.php").text
     soup = BeautifulSoup(menu, "html.parser")
     tables = soup.find_all("table")
     cambionati = tables[1]
@@ -44,26 +46,27 @@ def get_regioni():
     return {rg.text : parse_url(rg["href"]) for rg in regioni} # "REG"
 
 def get_campionati(region_id):
-    menu = r.get(url + "risultati/regioni/menu_reg.php", params={"REG": region_id}).text
+    menu = r.get(URL + "risultati/regioni/menu_reg.php", params={"REG": region_id}).text
     soup = BeautifulSoup(menu, "html.parser")
     campionati = soup.find_all("a")
     return {cmp.text : parse_url(cmp["href"]) for cmp in campionati} # "CAM"
 
 def get_tornei_types(region_id):
-    menu = r.get(url + "risultati/regioni/menu_tor.php", params={"REG": region_id}).text
+    menu = r.get(URL + "risultati/regioni/menu_tor.php", params={"REG": region_id}).text
     soup = BeautifulSoup(menu, "html.parser")
     tornei = soup.find_all("a")
     return {trn.text : parse_url(trn["href"]) for trn in tornei} # "TOR"
 
 def get_tornei(tornei_id, region_id):
-    tornei = r.get(url + "risultati/tornei/elenco_tornei.php", params={"TOR": tornei_id, "COMIT": region_id, "ID": 0}).text
+    tornei = r.get(URL + "risultati/tornei/elenco_tornei.php", params={"TOR": tornei_id, "COMIT": region_id, "ID": 0}).text
     soup = BeautifulSoup(tornei, "html.parser")
     tornei = soup.find_all("a")
     return {trn.text : parse_url(trn["href"]) for trn in tornei} # "IDT" "TIPO"
 
 def get_tabelloni(torneo_id, region_id):
-    tabellone = r.get(url + f"risultati/tornei/tabelloni/{torneo_id}_{region_id}_home.html")
+    tabellone = r.get(URL + f"risultati/tornei/tabelloni/{torneo_id}_{region_id}_home.html")
     if tabellone.status_code == 404:
+        # not played yet
         return None
 
     tabellone = tabellone.text
@@ -82,12 +85,12 @@ def get_tabellone(name, path):
 
 
 def get_tabellone_gironi(path):
-    tab = r.get(url + "risultati/tornei/tabelloni/" + path).text
+    tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
     soup = BeautifulSoup(tab, "html.parser")
     # get all tr withoud bgcolor
     trs = soup.find_all("tr", {"bgcolor": None})
     out = [match_from_girone_row(tr) for tr in trs]
-    return filter(None, out)
+    return list(filter(None, out))
 
 
 def match_from_girone_row(row):
@@ -111,7 +114,7 @@ def match_from_girone_row(row):
 
 
 def get_tabellone_eliminatorie(path):
-    tab = r.get(url + "risultati/tornei/tabelloni/" + path).text
+    tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
     soup = BeautifulSoup(tab, "html.parser")
     tr = soup.find_all("tr")
     return parse_eliminatorie_table(tr)
@@ -155,6 +158,7 @@ def parse_eliminatorie_score(score):
     # reverse the tuple if the score is negative
     return [(max(11,abs(x)+2), abs(x))[::(1 if x >= 0 else -1)] for x in sets]
 
+
 def get_tornei_matches(reg):
     out = []
     tornei_types = get_tornei_types(reg)
@@ -163,21 +167,88 @@ def get_tornei_matches(reg):
         tornei = get_tornei(tipo["TOR"], reg)
         all_tornei.update(tornei)
 
-    for torneo in all_tornei.values():
+    for name, torneo in all_tornei.items():
+        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
         tabelloni = get_tabelloni(torneo["IDT"], reg)
         if tabelloni is None:
+            # not played yet
             continue
+
         for name, path in tabelloni.items():
-            out += get_tabellone(name, path)
+            tmp = get_tabellone(name, path)
+            for match in tmp:
+                match.date = date
+            out += tmp
     return out
+
+def get_campionati_matches(reg):
+    campionati = get_campionati(reg)
+    out = []
+    for campionato in campionati.values():
+        out += get_girone_matches(campionato["CAM"], get_anno_campionato(campionato["CAM"]))
+    return out
+
+
+def get_anno_campionato(campionato):
+    header = r.get(URL + "risultati/campionati/testa_campionati.php", params={"CAM": campionato}).text
+    soup = BeautifulSoup(header, "html.parser")
+    return parse_url(soup.find("a")["href"])["ANNO"]
+
+
+def get_girone_matches(campionato, anno):
+    incontri = get_giornate_list(campionato, anno)
+    out = []
+    for incontro in incontri:
+        out += get_matches_from_giornata(incontro["INCONTRO"], incontro["CAM"])
+    return out
+
+
+def get_giornate_list(campionato, anno):
+    calendar = r.get(URL + "risultati/campionati/Calendario.asp", params={"CAM": campionato, "ANNO": anno}).text
+    soup = BeautifulSoup(calendar, "html.parser")
+    # get all a tag not containing only " - "
+    incontri = soup.find_all("a", string=lambda x: x != " - ")[1:] # first is the STAMPA button
+    return [parse_url(inc["href"]) for inc in incontri] # INCONTRO CAM FORMULA
+
+
+def get_matches_from_giornata(giornata, campionato):
+    giornata = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": giornata, "FORMULA": 1}).text
+    soup = BeautifulSoup(giornata, "html.parser")
+    date = soup.find("b", string=lambda x: "Giornata" in x).text
+    date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
+
+    # get the second div in body direct children of body
+    div = soup.body.find_all("div", recursive=False)[1]
+    rows = div.find_all("tr")
+    out = list(filter(None, [parse_giornata_row(row) for row in rows]))
+    for match in out: match.date = date
+    return out
+
+def parse_giornata_row(row):
+    td = row.find_all("td")
+    if not td[0].text.strip().isdigit():
+        return None
+
+    one = td[1].text.strip()
+    two = td[2].text.strip()
+    # for each set
+    sets = []
+    for i in range(5):
+        points_one = td[3+i*2].text.strip()
+        points_two = td[4+i*2].text.strip()
+        if points_one == "0" and points_two == "0":
+            break
+
+        sets.append((int(points_one), int(points_two)))
+    return Match(get_player(one), get_player(two), sets)
 
 def main():
     all_matches = []
     for name, attrs in get_regioni().items():
         if name != "Trentino":
             continue
-
-        campionati = get_campionati(attrs["REG"])
+        
+        all_matches += get_campionati_matches(attrs["REG"])
         all_matches += get_tornei_matches(attrs["REG"])
 
 
