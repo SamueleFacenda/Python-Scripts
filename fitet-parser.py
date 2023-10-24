@@ -1,10 +1,17 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from collections import deque
+from icecream import ic
+from time import sleep
 
+
+class DropInThreadPoolExecutor(ThreadPoolExecutor):
+    def join(self):
+        pass # TODO
 
 class Player:
     def __init__(self, name):
@@ -38,11 +45,21 @@ class Match:
         return f"{self.date}: {self.one.name} vs {self.two.name} with score {self.score}"
 
 
+class Error404(Exception):
+    pass
+
 URL = "https://portale.fitet.org/"
+
+def make_soup_res(path, params):
+    req = r.get(URL + path, params=params)
+    if req.status_code == 404:
+        raise Error404()
+    return BeautifulSoup(req.text, "html.parser")
 
 def parse_url(url):
     params = url.split("?")[-1].split("&")
     return {param.split("=")[0] : param.split("=")[1] for param in params}
+
 
 def get_regioni():
     menu = r.get(URL + "menu.php").text
@@ -55,34 +72,27 @@ def get_regioni():
     regioni = regioni.find_all("a")
     return {rg.text : parse_url(rg["href"]) for rg in regioni} # "REG"
 
-def get_campionati(region_id):
-    menu = r.get(URL + "risultati/regioni/menu_reg.php", params={"REG": region_id}).text
-    soup = BeautifulSoup(menu, "html.parser")
-    campionati = soup.find_all("a")
-    return {cmp.text : parse_url(cmp["href"]) for cmp in campionati} # "CAM"
 
-def get_tornei_types(region_id):
-    menu = r.get(URL + "risultati/regioni/menu_tor.php", params={"REG": region_id}).text
-    soup = BeautifulSoup(menu, "html.parser")
-    tornei = soup.find_all("a")
-    return {trn.text : parse_url(trn["href"]) for trn in tornei} # "TOR"
+def get_results_urls_parsed(path, params={}, parse=True):
+    soup = make_soup_res("risultati/" + path, params)
+    urls = soup.find_all("a")
+    return {url.text : parse_url(url["href"]) if parse else url["href"] for url in urls}
+    
+def get_campionati(region):
+    return get_results_urls_parsed("regioni/menu_reg.php", {"REG": region}) # "CAM"
 
-def get_tornei(tornei_id, region_id):
-    tornei = r.get(URL + "risultati/tornei/elenco_tornei.php", params={"TOR": tornei_id, "COMIT": region_id, "ID": 0}).text
-    soup = BeautifulSoup(tornei, "html.parser")
-    tornei = soup.find_all("a")
-    return {trn.text : parse_url(trn["href"]) for trn in tornei} # "IDT" "TIPO"
+def get_tornei_types(region):
+    return get_results_urls_parsed("regioni/menu_tor.php", {"REG": region}) # "TOR"
 
-def get_tabelloni(torneo_id, region_id):
-    tabellone = r.get(URL + f"risultati/tornei/tabelloni/{torneo_id}_{region_id}_home.html")
-    if tabellone.status_code == 404:
+def get_tornei(tor_type, region):
+    return get_results_urls_parsed("tornei/elenco_tornei.php", {"TOR": tor_type, "COMIT": region, "ID": 0}) # "IDT" "TIPO"
+
+def get_tabelloni(torneo, region):
+    try:
+        return get_results_urls_parsed(f"tornei/tabelloni/{torneo}_{region}_home.html", parse=False)
+    except Error404:
         # not played yet
         return None
-
-    tabellone = tabellone.text
-    soup = BeautifulSoup(tabellone, "html.parser")
-    tabellone = soup.find_all("a")
-    return {tbl.text : tbl["href"] for tbl in tabellone}
 
 
 def get_tabellone(name, path, date):
@@ -107,6 +117,7 @@ def get_tabellone_gironi(path, date):
     out = list(filter(None, out))
     for match in out: match.date = date
 
+    global all_matches, all_matches_lock
     with all_matches_lock:
         all_matches += out
 
@@ -145,6 +156,7 @@ def get_tabellone_eliminatorie(path, date):
         out = parse_eliminatorie_table(tr)
     
     for match in out: match.date = date
+    global all_matches, all_matches_lock
     with all_matches_lock:
         all_matches += out
 
@@ -212,17 +224,12 @@ def parse_eliminatorie_score(score):
     return [(max(11,abs(x)+2), abs(x))[::(1 if x >= 0 else -1)] for x in sets]
 
 
-def get_tornei_matches(reg):
-    out = []
-    tornei_types = get_tornei_types(reg)
+def get_tornei_matches(reg, types):
+    tornei = pool.starmap_async(partial(get_tornei, region=reg), types)
+    for torneo_type_dict in tornei:
+        ids = [x["IDT"] for x in torneo_type_dict.values()]
+        pool.starmap_async(partial(get_torneo_matches, reg=reg), torneo_type_dict.keys(), ids)
 
-    tornei = pool.map(partial(get_tornei, region_id=reg), tornei_types.values())
-    all_tornei = {}
-    for torneo_type_dict in as_completed(tornei):
-        all_tornei.update(torneo_type_dict)
-
-    ids = [x["IDT"] for x in all_tornei.values()]
-    pool.map(partial(get_torneo_matches, reg=reg), all_tornei.keys(), ids)
 
 def get_torneo_matches(name, id, reg):
     date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
@@ -233,14 +240,17 @@ def get_torneo_matches(name, id, reg):
 
     # keys are names
     # values are paths
-    pool.map(partial(get_tabellone, path=reg, date=date), tabelloni.keys(), tabelloni.values())
+    pool.starmap_async(partial(get_tabellone, date=date), tabelloni.keys(), tabelloni.values())
 
 def get_campionati_matches(reg):
     campionati = get_campionati(reg)
-    campionati = [campionati["CAM"] for campionati in campionati.values()]
+    if not campionati:
+        # Val D'Aosta :(
+        return
+    campionati = [x["CAM"] for x in campionati.values()]
     anno = get_anno_campionato(campionati[0])
 
-    pool.map(partial(get_girone_matches, anno=anno), campionati)
+    pool.starmap_async(partial(get_girone_matches, anno=anno), campionati)
 
 
 def get_anno_campionato(campionato):
@@ -251,7 +261,7 @@ def get_anno_campionato(campionato):
 
 def get_girone_matches(campionato, anno):
     incontri = get_giornate_list(campionato, anno)
-    pool.map(get_matches_from_giornata, [i["INCONTRO"] for i in incontri], [i["CAM"] for i in incontri])
+    pool.starmap_async(get_matches_from_giornata, [i["INCONTRO"] for i in incontri], [i["CAM"] for i in incontri])
 
 
 def get_giornate_list(campionato, anno):
@@ -275,6 +285,7 @@ def get_matches_from_giornata(giornata, campionato):
     out = list(filter(None, [parse_giornata_row(row) for row in rows]))
     for match in out: match.date = date
     
+    global all_matches, all_matches_lock
     with all_matches_lock:
         all_matches += out
 
@@ -299,20 +310,26 @@ def parse_giornata_row(row):
 
 
 def main():
-    pool = ThreadPoolExecutor(max_workers=30)
+    global all_matches, all_matches_lock, pool
+
+    pool = ThreadPoolExecutor(max_workers=40)
 
     all_matches = deque()
     all_matches_lock = Lock()
 
     regs = get_regioni()
-    # regs = {k:v for k,v in regs.items() if k == "Trentino"}
+    regs = {k:v for k,v in regs.items() if k == "Trentino"}
     regs = [x["REG"] for x in regs.values()]
 
-    pool.map(get_campionati_matches, regs)
-    pool.map(get_tornei_matches, regs)
+    tornei_types = get_tornei_types(regs[0])
+    tornei_types = [tt["TOR"] for tt in tornei_types.values()]
+
+    pool.starmap_async(get_campionati_matches, regs)
+    # pool.starmap_async(get_tornei_matches, regs, [tornei_types] * len(regs))
+        
 
     # wait for all threads to finish
-    pool.shutdown(wait=True, cancel_futures=False)
+    pool.join()
 
     # for match in all_matches: print(match)
     print(len(all_matches))
