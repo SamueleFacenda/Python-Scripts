@@ -1,22 +1,25 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
-from threading import Thread, Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
+from collections import deque
+
 
 class Player:
     def __init__(self, name):
-        self.name = name
+        self.name: str = name
+        self.matches: deque["Match"] = deque()
         # print(f"Created player {name}")
 
-players: dict[str, Player] = {}
-def get_player(name):
-    name = name.strip().title()
-    if name in players:
-        return players[name]
-    else:
-        players[name] = Player(name)
-        return players[name]    
+    instances: dict[str, "Player"] = {}
+    def get(name) -> "Player":
+        name = name.strip().title()
+        if name in Player.instances:
+            return Player.instances[name]
+        else:
+            Player.instances[name] = Player(name)
+            return Player.instances[name]    
 
 class Match:
     def __init__(self, one, two, score: list[tuple[int, int]], date=None):
@@ -24,7 +27,12 @@ class Match:
         self.two: Player = two
         self.score: list[tuple[int, int]] = score
         self.date = date
-        # print(f"Created match {one.name} vs {two.name} with score {score}")
+        
+        self.one.matches.append(self)
+        self.two.matches.append(self)
+        Match.instances.append(self)
+
+    instances: deque["Match"] = deque()
 
     def __str__(self):
         return f"{self.date}: {self.one.name} vs {self.two.name} with score {self.score}"
@@ -77,25 +85,30 @@ def get_tabelloni(torneo_id, region_id):
     return {tbl.text : tbl["href"] for tbl in tabellone}
 
 
-def get_tabellone(name, path):
+def get_tabellone(name, path, date):
     if "gironi" in name:
-        return get_tabellone_gironi(path)
+        get_tabellone_gironi(path, date)
     elif "eliminatoria" in name:
-        return get_tabellone_eliminatorie(path)
+        get_tabellone_eliminatorie(path, date)
     elif "Top AB" in name:
-        return [] # TODO schifo
+        rpass # TODO schifo
     else:
         print("Unknown tabellone type", name)
         print("Path", path)
 
 
-def get_tabellone_gironi(path):
+def get_tabellone_gironi(path, date):
     tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
     soup = BeautifulSoup(tab, "html.parser")
     # get all tr withoud bgcolor
     trs = soup.find_all("tr", {"bgcolor": None})
     out = [match_from_girone_row(tr) for tr in trs]
-    return list(filter(None, out))
+
+    out = list(filter(None, out))
+    for match in out: match.date = date
+
+    with all_matches_lock:
+        all_matches += out
 
 
 def match_from_girone_row(row):
@@ -104,9 +117,9 @@ def match_from_girone_row(row):
         return None
 
     one = tds[0].text.strip()
-    one = get_player(one)
+    one = Player.get(one)
     two = tds[1].text.strip()
-    two = get_player(two)
+    two = Player.get(two)
     score = tds[3].text.strip().split(", ")
     if "assente" in score[0] or "ritirato" in score[0]:
         if "1" in score[0]:
@@ -119,17 +132,21 @@ def match_from_girone_row(row):
     return Match(one, two, score)
 
 
-def get_tabellone_eliminatorie(path):
+def get_tabellone_eliminatorie(path, date):
     tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
     soup = BeautifulSoup(tab, "html.parser")
     tr = soup.find_all("tr")
     if soup.find("i"):
-        # i is intastation text for the two tables
+        # i is intestation text for the two tables
         principale = parse_eliminatorie_table(tr[:len(tr)//2])
         consolazione = parse_eliminatorie_table(tr[len(tr)//2:])
-        return principale + consolazione
+        out = principale + consolazione
     else:
-        return parse_eliminatorie_table(tr)
+        out = parse_eliminatorie_table(tr)
+    
+    for match in out: match.date = date
+    with all_matches_lock:
+        all_matches += out
 
 
 def parse_eliminatorie_table(rows):
@@ -137,14 +154,18 @@ def parse_eliminatorie_table(rows):
     number = len(rows)
     third_fourth = number.bit_count() != 1
     branches = [[x.text for x in row.find_all("font")] for row in rows]
-    out = []
+    out = deque()
 
-    if number.bit_count() != 1:
+    if number.bit_count() != 1 and number:
         # third fourth place match
         cell_one = branches[-2][-2]
+ 
         cell_two = branches[-1][-1]
         result_cell = branches[-2][-1]
-        out.append(make_match_eliminatorie(cell_one, cell_two, result_cell))
+
+        if "-" not in result_cell:
+            out.append(make_match_eliminatorie(cell_one, cell_two, result_cell))
+
         branches = branches[:-2]
         number -= 2
 
@@ -153,42 +174,40 @@ def parse_eliminatorie_table(rows):
         for match_index in range(0, number, 2**(turn+1)):
             cell_one = branches[match_index][turn]
             cell_two = branches[match_index+ 2**turn][turn]
-            if "< X >" in cell_one or "< X >" in cell_two:
+            result_cell = branches[match_index][turn+1]
+
+            # < X > or < X >- for skipped matches
+            # - for not played matches
+            if "< X >" in cell_one or "< X >" in cell_two or "-" in result_cell:
                 continue
-            try:
-                result_cell = branches[match_index][turn+1]
-            except IndexError:
-                print("Error parsing cell", cell_one)
-                print("Cells", cell_one, cell_two, result_cell)
-                exit(1)
+
             out.append(make_match_eliminatorie(cell_one, cell_two, result_cell))
 
     return out
 
 
 def make_match_eliminatorie(cell_one, cell_two, result_cell):
-    try:
-        one = parse_eliminatorie_cell(cell_one)[0]
-        two = parse_eliminatorie_cell(cell_two)[0]
-    except IndexError:
-        print("Error parsing cell", cell_one)
-        print("Cells", cell_one, cell_two, result_cell)
-        exit(1)
-    one = get_player(one)
-    two = get_player(two)
+    one = parse_eliminatorie_cell(cell_one)[0]
+    two = parse_eliminatorie_cell(cell_two)[0]
+
+    one = Player.get(one)
+    two = Player.get(two)
     winner, score = parse_eliminatorie_cell(result_cell)
-    winner = get_player(winner)
+
+    winner = Player.get(winner)
     other = two if winner == one else one
     return Match(winner, other, score)
 
 
 def parse_eliminatorie_cell(text):
-    spl = re.split(r"\([0-9]+\)", text, 1)
-    return (spl[0].strip(), parse_eliminatorie_score(spl[1].strip()))
+    spl = re.split(r"\([0-9]+\)", text)
+    return (spl[0].strip(), parse_eliminatorie_score(spl[-1].strip()))
 
 
 def parse_eliminatorie_score(score):
-    sets = [int(x) for x in filter(None, score.split(","))]
+    # (R) means retired, the set score is 0
+    sets = [int(x) if not "(R)" in x else 0 for x in filter(None, score.split(","))]
+
     # reverse the tuple if the score is negative
     return [(max(11,abs(x)+2), abs(x))[::(1 if x >= 0 else -1)] for x in sets]
 
@@ -196,43 +215,32 @@ def parse_eliminatorie_score(score):
 def get_tornei_matches(reg):
     out = []
     tornei_types = get_tornei_types(reg)
+
+    tornei = pool.map(partial(get_tornei, region_id=reg), tornei_types.values())
     all_tornei = {}
-    for tipo in tornei_types.values():
-        tornei = get_tornei(tipo["TOR"], reg)
-        all_tornei.update(tornei)
+    for torneo_type_dict in as_completed(tornei):
+        all_tornei.update(torneo_type_dict)
 
-    for name, torneo in all_tornei.items():
-        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        tabelloni = get_tabelloni(torneo["IDT"], reg)
-        if tabelloni is None:
-            # not played yet
-            continue
+    ids = [x["IDT"] for x in all_tornei.values()]
+    pool.map(partial(get_torneo_matches, reg=reg), all_tornei.keys(), ids)
 
-        for name, path in tabelloni.items():
-            tmp = get_tabellone(name, path)
-            for match in tmp:
-                match.date = date
-            out += tmp
-    return out
+def get_torneo_matches(name, id, reg):
+    date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
+    tabelloni = get_tabelloni(id, reg)
+    if tabelloni is None:
+        # not played yet
+        return
+
+    # keys are names
+    # values are paths
+    pool.map(partial(get_tabellone, path=reg, date=date), tabelloni.keys(), tabelloni.values())
 
 def get_campionati_matches(reg):
     campionati = get_campionati(reg)
-    out = []
-    out_lock = Lock()
-    threads = []
-    for campionato in campionati.values():
-        func = partial(get_campionati_matches_threaded, campionato["CAM"], out, out_lock)
-        threads.append(Thread(target=func))
-        threads[-1].start()
+    campionati = [campionati["CAM"] for campionati in campionati.values()]
+    anno = get_anno_campionato(campionati[0])
 
-    for thread in threads: thread.join()
-    return out
-
-def get_campionati_matches_threaded(cmp, out, out_lock):
-    anno = get_anno_campionato(cmp)
-    tmp = get_girone_matches(cmp, anno)
-    with out_lock:
-        out += tmp
+    pool.map(partial(get_girone_matches, anno=anno), campionati)
 
 
 def get_anno_campionato(campionato):
@@ -243,10 +251,7 @@ def get_anno_campionato(campionato):
 
 def get_girone_matches(campionato, anno):
     incontri = get_giornate_list(campionato, anno)
-    out = []
-    for incontro in incontri:
-        out += get_matches_from_giornata(incontro["INCONTRO"], incontro["CAM"])
-    return out
+    pool.map(get_matches_from_giornata, [i["INCONTRO"] for i in incontri], [i["CAM"] for i in incontri])
 
 
 def get_giornate_list(campionato, anno):
@@ -260,22 +265,19 @@ def get_giornate_list(campionato, anno):
 def get_matches_from_giornata(giornata, campionato):
     risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": giornata, "FORMULA": 1}).text
     soup = BeautifulSoup(risultato, "html.parser")
-    try:
-        date = soup.find("b", string=re.compile("Giornata")).text
-        date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
-    except TypeError as e:
-        print("Error parsing giornata", giornata, "campionato", campionato)
-        # print(soup)
-        # print the stacktrace
-        raise e
-        exit(1)
+
+    date = soup.find("b", string=re.compile("Giornata")).text
+    date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
 
     # get the second div in body direct children of body
     div = soup.body.find_all("div", recursive=False)[1]
     rows = div.find_all("tr")
     out = list(filter(None, [parse_giornata_row(row) for row in rows]))
     for match in out: match.date = date
-    return out
+    
+    with all_matches_lock:
+        all_matches += out
+
 
 def parse_giornata_row(row):
     td = row.find_all("td")
@@ -293,19 +295,29 @@ def parse_giornata_row(row):
             break
 
         sets.append((int(points_one), int(points_two)))
-    return Match(get_player(one), get_player(two), sets)
+    return Match(Player.get(one), Player.get(two), sets)
+
 
 def main():
-    all_matches = []
-    for name, attrs in get_regioni().items():
-        if name != "Trentino":
-            pass
-        
-        # all_matches += get_campionati_matches(attrs["REG"])
-        all_matches += get_tornei_matches(attrs["REG"])
+    pool = ThreadPoolExecutor(max_workers=30)
 
+    all_matches = deque()
+    all_matches_lock = Lock()
 
-    for match in all_matches: print(match)
+    regs = get_regioni()
+    # regs = {k:v for k,v in regs.items() if k == "Trentino"}
+    regs = [x["REG"] for x in regs.values()]
+
+    pool.map(get_campionati_matches, regs)
+    pool.map(get_tornei_matches, regs)
+
+    # wait for all threads to finish
+    pool.shutdown(wait=True, cancel_futures=False)
+
+    # for match in all_matches: print(match)
+    print(len(all_matches))
+
+    for match in Player.get("Facenda Samuele").matches: print(match)
 
 if __name__ == "__main__":
     main()
