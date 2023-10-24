@@ -82,8 +82,11 @@ def get_tabellone(name, path):
         return get_tabellone_gironi(path)
     elif "eliminatoria" in name:
         return get_tabellone_eliminatorie(path)
+    elif "Top AB" in name:
+        return [] # TODO schifo
     else:
         print("Unknown tabellone type", name)
+        print("Path", path)
 
 
 def get_tabellone_gironi(path):
@@ -105,13 +108,14 @@ def match_from_girone_row(row):
     two = tds[1].text.strip()
     two = get_player(two)
     score = tds[3].text.strip().split(", ")
-    if "assente" in score[0]:
+    if "assente" in score[0] or "ritirato" in score[0]:
         if "1" in score[0]:
-            score = [(0, 11), (0, 11), (0, 11)]
+            score = [(0, 11)] * 3
         else:
-            score = [(11, 0), (11, 0), (11, 0)]
+            score = [(11, 0)] * 3
     else:
         score = [(int(s.split("-")[0]), int(s.split("-")[1])) for s in score]
+
     return Match(one, two, score)
 
 
@@ -119,29 +123,57 @@ def get_tabellone_eliminatorie(path):
     tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
     soup = BeautifulSoup(tab, "html.parser")
     tr = soup.find_all("tr")
-    return parse_eliminatorie_table(tr)
+    if soup.find("i"):
+        # i is intastation text for the two tables
+        principale = parse_eliminatorie_table(tr[:len(tr)//2])
+        consolazione = parse_eliminatorie_table(tr[len(tr)//2:])
+        return principale + consolazione
+    else:
+        return parse_eliminatorie_table(tr)
 
 
 def parse_eliminatorie_table(rows):
+    # round to lower log2
     number = len(rows)
-    assert number.bit_count() == 1 # is power of 2
+    third_fourth = number.bit_count() != 1
     branches = [[x.text for x in row.find_all("font")] for row in rows]
     out = []
-    # from log2(number) to 0
+
+    if number.bit_count() != 1:
+        # third fourth place match
+        cell_one = branches[-2][-2]
+        cell_two = branches[-1][-1]
+        result_cell = branches[-2][-1]
+        out.append(make_match_eliminatorie(cell_one, cell_two, result_cell))
+        branches = branches[:-2]
+        number -= 2
+
+    # from 0 to log2(number)
     for turn in range(number.bit_length()-1):
         for match_index in range(0, number, 2**(turn+1)):
             cell_one = branches[match_index][turn]
             cell_two = branches[match_index+ 2**turn][turn]
-            if cell_two == "< X >" or cell_one == "< X >":
+            if "< X >" in cell_one or "< X >" in cell_two:
                 continue
-            result_cell = branches[match_index][turn+1]
+            try:
+                result_cell = branches[match_index][turn+1]
+            except IndexError:
+                print("Error parsing cell", cell_one)
+                print("Cells", cell_one, cell_two, result_cell)
+                exit(1)
             out.append(make_match_eliminatorie(cell_one, cell_two, result_cell))
+
     return out
 
 
 def make_match_eliminatorie(cell_one, cell_two, result_cell):
-    one = parse_eliminatorie_cell(cell_one)[0]
-    two = parse_eliminatorie_cell(cell_two)[0]
+    try:
+        one = parse_eliminatorie_cell(cell_one)[0]
+        two = parse_eliminatorie_cell(cell_two)[0]
+    except IndexError:
+        print("Error parsing cell", cell_one)
+        print("Cells", cell_one, cell_two, result_cell)
+        exit(1)
     one = get_player(one)
     two = get_player(two)
     winner, score = parse_eliminatorie_cell(result_cell)
@@ -226,10 +258,17 @@ def get_giornate_list(campionato, anno):
 
 
 def get_matches_from_giornata(giornata, campionato):
-    giornata = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": giornata, "FORMULA": 1}).text
-    soup = BeautifulSoup(giornata, "html.parser")
-    date = soup.find("b", string=lambda x: "Giornata" in x).text
-    date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
+    risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": giornata, "FORMULA": 1}).text
+    soup = BeautifulSoup(risultato, "html.parser")
+    try:
+        date = soup.find("b", string=re.compile("Giornata")).text
+        date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
+    except TypeError as e:
+        print("Error parsing giornata", giornata, "campionato", campionato)
+        # print(soup)
+        # print the stacktrace
+        raise e
+        exit(1)
 
     # get the second div in body direct children of body
     div = soup.body.find_all("div", recursive=False)[1]
@@ -260,9 +299,9 @@ def main():
     all_matches = []
     for name, attrs in get_regioni().items():
         if name != "Trentino":
-            continue
+            pass
         
-        all_matches += get_campionati_matches(attrs["REG"])
+        # all_matches += get_campionati_matches(attrs["REG"])
         all_matches += get_tornei_matches(attrs["REG"])
 
 
