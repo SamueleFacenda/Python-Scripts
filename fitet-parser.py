@@ -1,17 +1,82 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
-from threading import Lock
-from concurrent.futures import ThreadPoolExecutor
+from threading import Lock, Event
+from multiprocessing.pool import ThreadPool
 from functools import partial
 from collections import deque
 from icecream import ic
 from time import sleep
+import logging
 
 
-class DropInThreadPoolExecutor(ThreadPoolExecutor):
-    def join(self):
-        pass # TODO
+class RunnerCounter:
+    def __init__(self):
+        self.count = 0
+        self.count_lock = Lock()
+        self.zero_event = Event()
+        self.zero_event.set()
+
+    def add(self, n=1):
+        with self.count_lock:
+            self.count += n
+            if self.count != 0:
+                self.zero_event.clear()
+
+    def sub(self, n=1):
+        with self.count_lock:
+            self.count -= n
+            if self.count == 0:
+                self.zero_event.set()
+
+    def wait_for_zero(self):
+        self.zero_event.wait()
+
+    def wrap(self, fn, add=True):
+        def wrapped(*args, **kwargs):
+            if add:
+                self.add()
+            try:
+                out = fn(*args, **kwargs)
+            except:
+                self.sub()
+                logging.exception("Error in thread")
+            self.sub()
+            return out
+        return wrapped
+
+    def required(self, fn):
+        return self.wrap(fn, add=False)
+
+class WaitableThreadPool(ThreadPool):
+    def error_callback(error):
+        try:
+            raise error
+        except:
+            # python :(
+            logging.exception("Error in thread")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.counter = RunnerCounter()
+
+    def map_async(self, fn, iterable, callback=None):
+        self.counter.add(len(iterable))
+        return super().map_async(self.counter.required(fn), iterable, callback, error_callback=self.error_callback)
+
+    def starmap_async(self, fn, iterable, callback=None):
+        self.counter.add(len(iterable))
+        return super().starmap_async(self.counter.required(fn), iterable, callback, error_callback=self.error_callback)
+
+    def imap_unordered(self, fn, iterable, chunksize=1):
+        self.counter.add(len(iterable))
+        return super().imap_unordered(self.counter.required(fn), iterable, chunksize)
+
+
+    def wait_and_end(self):
+        self.counter.wait_for_zero()
+        self.close()
+        self.join()
 
 class Player:
     def __init__(self, name):
@@ -45,8 +110,7 @@ class Match:
         return f"{self.date}: {self.one.name} vs {self.two.name} with score {self.score}"
 
 
-class Error404(Exception):
-    pass
+class Error404(Exception): pass
 
 URL = "https://portale.fitet.org/"
 
@@ -162,9 +226,7 @@ def get_tabellone_eliminatorie(path, date):
 
 
 def parse_eliminatorie_table(rows):
-    # round to lower log2
     number = len(rows)
-    third_fourth = number.bit_count() != 1
     branches = [[x.text for x in row.find_all("font")] for row in rows]
     out = deque()
 
@@ -225,10 +287,10 @@ def parse_eliminatorie_score(score):
 
 
 def get_tornei_matches(reg, types):
-    tornei = pool.starmap_async(partial(get_tornei, region=reg), types)
+    tornei = pool.imap_unordered(partial(get_tornei, region=reg), types)
     for torneo_type_dict in tornei:
-        ids = [x["IDT"] for x in torneo_type_dict.values()]
-        pool.starmap_async(partial(get_torneo_matches, reg=reg), torneo_type_dict.keys(), ids)
+        names_ids = [(name, val["IDT"]) for name, val in torneo_type_dict.items()]
+        pool.starmap_async(partial(get_torneo_matches, reg=reg), names_ids)
 
 
 def get_torneo_matches(name, id, reg):
@@ -240,7 +302,7 @@ def get_torneo_matches(name, id, reg):
 
     # keys are names
     # values are paths
-    pool.starmap_async(partial(get_tabellone, date=date), tabelloni.keys(), tabelloni.values())
+    pool.starmap_async(partial(get_tabellone, date=date), tabelloni.items())
 
 def get_campionati_matches(reg):
     campionati = get_campionati(reg)
@@ -250,7 +312,7 @@ def get_campionati_matches(reg):
     campionati = [x["CAM"] for x in campionati.values()]
     anno = get_anno_campionato(campionati[0])
 
-    pool.starmap_async(partial(get_girone_matches, anno=anno), campionati)
+    pool.map_async(partial(get_girone_matches, anno=anno), campionati)
 
 
 def get_anno_campionato(campionato):
@@ -261,7 +323,7 @@ def get_anno_campionato(campionato):
 
 def get_girone_matches(campionato, anno):
     incontri = get_giornate_list(campionato, anno)
-    pool.starmap_async(get_matches_from_giornata, [i["INCONTRO"] for i in incontri], [i["CAM"] for i in incontri])
+    pool.starmap_async(get_matches_from_giornata, [(i["INCONTRO"], i["CAM"]) for i in incontri])
 
 
 def get_giornate_list(campionato, anno):
@@ -312,24 +374,23 @@ def parse_giornata_row(row):
 def main():
     global all_matches, all_matches_lock, pool
 
-    pool = ThreadPoolExecutor(max_workers=40)
+    pool = WaitableThreadPool(50)
 
     all_matches = deque()
     all_matches_lock = Lock()
 
     regs = get_regioni()
-    regs = {k:v for k,v in regs.items() if k == "Trentino"}
+    # regs = {k:v for k,v in regs.items() if k == "Trentino"}
     regs = [x["REG"] for x in regs.values()]
 
     tornei_types = get_tornei_types(regs[0])
     tornei_types = [tt["TOR"] for tt in tornei_types.values()]
 
-    pool.starmap_async(get_campionati_matches, regs)
-    # pool.starmap_async(get_tornei_matches, regs, [tornei_types] * len(regs))
-        
+    pool.map_async(get_campionati_matches, regs)
+    pool.starmap_async(get_tornei_matches, list(zip(regs, [tornei_types] * len(regs))))
 
     # wait for all threads to finish
-    pool.join()
+    pool.wait_and_end()
 
     # for match in all_matches: print(match)
     print(len(all_matches))
