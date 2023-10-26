@@ -1,82 +1,12 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
-from threading import Lock, Event
-from multiprocessing.pool import ThreadPool
+from threading import Lock
 from functools import partial
 from collections import deque
 from icecream import ic
 from time import sleep
-import logging
-
-
-class RunnerCounter:
-    def __init__(self):
-        self.count = 0
-        self.count_lock = Lock()
-        self.zero_event = Event()
-        self.zero_event.set()
-
-    def add(self, n=1):
-        with self.count_lock:
-            self.count += n
-            if self.count != 0:
-                self.zero_event.clear()
-
-    def sub(self, n=1):
-        with self.count_lock:
-            self.count -= n
-            if self.count == 0:
-                self.zero_event.set()
-
-    def wait_for_zero(self):
-        self.zero_event.wait()
-
-    def wrap(self, fn, add=True):
-        def wrapped(*args, **kwargs):
-            if add:
-                self.add()
-            try:
-                out = fn(*args, **kwargs)
-            except:
-                self.sub()
-                logging.exception("Error in thread")
-            self.sub()
-            return out
-        return wrapped
-
-    def required(self, fn):
-        return self.wrap(fn, add=False)
-
-class WaitableThreadPool(ThreadPool):
-    def error_callback(error):
-        try:
-            raise error
-        except:
-            # python :(
-            logging.exception("Error in thread")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.counter = RunnerCounter()
-
-    def map_async(self, fn, iterable, callback=None):
-        self.counter.add(len(iterable))
-        return super().map_async(self.counter.required(fn), iterable, callback, error_callback=self.error_callback)
-
-    def starmap_async(self, fn, iterable, callback=None):
-        self.counter.add(len(iterable))
-        return super().starmap_async(self.counter.required(fn), iterable, callback, error_callback=self.error_callback)
-
-    def imap_unordered(self, fn, iterable, chunksize=1):
-        self.counter.add(len(iterable))
-        return super().imap_unordered(self.counter.required(fn), iterable, chunksize)
-
-
-    def wait_and_end(self):
-        self.counter.wait_for_zero()
-        self.close()
-        self.join()
+from fitet.threadutils import WaitableThreadPool
 
 class Player:
     def __init__(self, name):
@@ -102,9 +32,6 @@ class Match:
         
         self.one.matches.append(self)
         self.two.matches.append(self)
-        Match.instances.append(self)
-
-    instances: deque["Match"] = deque()
 
     def __str__(self):
         return f"{self.date}: {self.one.name} vs {self.two.name} with score {self.score}"
@@ -366,12 +293,15 @@ def parse_giornata_row(row):
         points_two = td[4+i*2].text.strip()
         if points_one == "0" and points_two == "0":
             break
-
-        sets.append((int(points_one), int(points_two)))
+        try:
+            sets.append((int(points_one), int(points_two)))
+        except ValueError:
+            ic(td)
+            raise
     return Match(Player.get(one), Player.get(two), sets)
 
 
-def main():
+def get_all_matches(wanted_regions=None):
     global all_matches, all_matches_lock, pool
 
     pool = WaitableThreadPool(50)
@@ -380,7 +310,7 @@ def main():
     all_matches_lock = Lock()
 
     regs = get_regioni()
-    # regs = {k:v for k,v in regs.items() if k == "Trentino"}
+    regs = {k:v for k,v in regs.items() if k in wanted_regions}
     regs = [x["REG"] for x in regs.values()]
 
     tornei_types = get_tornei_types(regs[0])
@@ -389,11 +319,18 @@ def main():
     pool.map_async(get_campionati_matches, regs)
     pool.starmap_async(get_tornei_matches, list(zip(regs, [tornei_types] * len(regs))))
 
-    # wait for all threads to finish
+    # wait for all threads to finish, then make sure no strange thigs modify the output
     pool.wait_and_end()
+    all_matches_lock.acquire()
+    
+    return all_matches
+
+def main():
+
+    matches = get_all_matches(["Trentino"])
 
     # for match in all_matches: print(match)
-    print(len(all_matches))
+    print(len(matches))
 
     for match in Player.get("Facenda Samuele").matches: print(match)
 
