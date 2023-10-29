@@ -15,7 +15,7 @@ $xpath = new DOMXPath($html);
 $href = $xpath->query($xquery);
 // get the href attribute
 $href = $href->item(0)->getAttribute('href');
-$href = "https://www.corsi.univr.it/$href";
+$href = "https://www.corsi.univr.it$href";
 
 // save value to file
 $fp = fopen('href.txt', 'w');
