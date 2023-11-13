@@ -63,6 +63,7 @@
                 requests
                 icecream
                 pillow
+                tqdm
               ]))
             ];
 
