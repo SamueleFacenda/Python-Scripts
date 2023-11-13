@@ -1,1 +1,1 @@
-from fitet.fitetparser import get_all_matches, main as fetch_all
+from fitet.fitetparser import FitetParser, main as fetch_all
