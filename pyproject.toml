@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fitet-runner = "fitet.fitetparser:main"
+fitet-runner = "fitet:fetch_all"
 
 [tool.setuptools]
 packages = ["fitet"]
