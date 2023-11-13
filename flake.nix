@@ -48,7 +48,7 @@
         apps = {
             default = {
               type = "app";
-              program = "${self.defaultPackage.${system}}/bin/my-script";
+              program = "${self.defaultPackage.${system}}/bin/fitet-runner";
             };
           };
 
