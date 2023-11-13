@@ -119,8 +119,12 @@ def match_from_girone_row(row):
         return None
 
     one = tds[0].text.strip()
-    one = Player.get(one)
     two = tds[1].text.strip()
+
+    if one == '<?>' or two == '<?>':
+        return None
+
+    one = Player.get(one)
     two = Player.get(two)
     score = tds[3].text.strip().split(", ")
     if "assente" in score[0] or "ritirato" in score[0]:

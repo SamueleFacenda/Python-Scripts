@@ -33,7 +33,9 @@
               format = "pyproject";
 
               propagatedBuildInputs = with pkgs.python3.pkgs; [
-
+                beautifulsoup4
+                requests
+                icecream
               ];
 
               nativeBuildInputs = with pkgs; [

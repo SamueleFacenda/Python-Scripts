@@ -13,8 +13,12 @@ authors = [
 ]
 dependencies = [
    "requests",
-   "beautifulsoup4"
+   "beautifulsoup4",
+   "icecream",
 ]
 
 [project.scripts]
-fitet-parser = "fitet.fitetparser:main"
+fitet-runner = "fitet.fitetparser:main"
+
+[tool.setuptools]
+packages = ["fitet"]
