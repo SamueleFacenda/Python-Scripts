@@ -25,8 +25,8 @@
       {
 
         packages = {
-            myPack = pkgs.python3.pkgs.buildPythonApplication {
-              pname = "myPack";
+            fitet-parser = pkgs.python3.pkgs.buildPythonApplication {
+              pname = "fitet-parser";
               src = ./.;
               inherit version;
               pyproject = true;
@@ -45,7 +45,7 @@
             };
           };
 
-        defaultPackage = self.packages.${system}.myPack;
+        defaultPackage = self.packages.${system}.fitet-parser;
 
         apps = {
             default = {
