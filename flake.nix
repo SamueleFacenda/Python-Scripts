@@ -1,5 +1,5 @@
 {
-  description = "An full-optional flake template";
+  description = "An full-optional python flake template";
 
   # Nixpkgs / NixOS version to use.
   inputs.nixpkgs.url = "nixpkgs/nixos-23.05";
@@ -25,20 +25,21 @@
       {
 
         packages = {
-            myPack = pkgs.stdenv.mkDerivation {
+            myPack = pkgs.python3.pkgs.buildPythonApplication {
               pname = "myPack";
               src = ./.;
               inherit version;
+              pyproject = true;
+              format = "pyproject";
 
-              nativeBuildInputs = with pkgs; [];
+              propagatedBuildInputs = with pkgs.python3.pkgs; [
 
-              buildPhase = ''
-              '';
+              ];
 
-              installPhase = ''
-                mkdir -p $out/bin
-                cp * $out
-              '';
+              nativeBuildInputs = with pkgs; [
+                python3.pkgs.setuptools
+              ];
+
             };
           };
 
@@ -47,7 +48,7 @@
         apps = {
             default = {
               type = "app";
-              program = "${self.defaultPackage.${system}}/bin/executable";
+              program = "${self.defaultPackage.${system}}/bin/my-script";
             };
           };
 
@@ -60,7 +61,6 @@
                 requests
                 icecream
                 pillow
-                
               ]))
             ];
 

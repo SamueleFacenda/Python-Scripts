@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_scripts"
+version = "1.0.0"
+description = "My first Python package"
+requires-python = ">=3.8"
+keywords = ["python"]
+authors = [
+    {name = "Samuele Facenda", email = "samuele.facenda@gmail.com"},
+]
+dependencies = [
+   "requests",
+   "beautifulsoup4"
+]
+
+[project.scripts]
+fitet-parser = "fitet.fitetparser:main"
