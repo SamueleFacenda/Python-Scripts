@@ -1,5 +1,5 @@
 {
-  description = "An over-engineered Hello World in C";
+  description = "Excercises for the programmation1 course, unitn";
 
   # Nixpkgs / NixOS version to use.
   inputs.nixpkgs.url = "nixpkgs/nixos-23.05";
@@ -43,7 +43,8 @@
 
             installPhase = ''
               mkdir -p $out/bin
-              cp a.out $out/bin
+              find . -type f ! -iregex ".*\.\(c\|cpp\|cc\|nix\|lock\|envrc\|txt\)$" \
+                -exec mv -t "''${out}/bin" "{}" +
             '';
           };
         });

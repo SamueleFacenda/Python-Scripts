@@ -304,7 +304,7 @@ def parse_giornata_row(row):
 def get_all_matches(wanted_regions=None):
     global all_matches, all_matches_lock, pool
 
-    pool = WaitableThreadPool(50)
+    pool = WaitableThreadPool(10)
 
     all_matches = deque()
     all_matches_lock = Lock()

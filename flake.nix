@@ -59,6 +59,7 @@
                 beautifulsoup4
                 requests
                 icecream
+                pillow
                 
               ]))
             ];
