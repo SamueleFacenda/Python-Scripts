@@ -1,6 +1,5 @@
-from fitet.threadutils import WaitableThreadPool
 from datetime import datetime
-from icecream import ic
+from abc import ABC, abstractmethod
 
 class Player:
     def __init__(self, name):
@@ -50,7 +49,7 @@ class Match:
     #def __hash__(self):
     #    return hash((self.one.name, self.two.name, tuple(self.score)))#, self._source.name))#, self.date) TODO
 
-class TTEvent:
+class TTEvent():
     instances: dict[str, "TTEvent"] = {}
 
     def __init__(self, name, date):
@@ -58,30 +57,36 @@ class TTEvent:
         self.date: datetime = date
         self.matches: set["Match"] = set()
         
-    def get(name, date=None):
+    @classmethod 
+    def get(cls, name, date=None):
         if name not in TTEvent.instances:
-            TTEvent.instances[name] = TTEvent(name, date)
+            TTEvent.instances[name] = cls(name, date)
 
         return TTEvent.instances[name]
 
-    def _nameTrn(id, reg):
+    def getName(a, b):
+        raise NotImplementedError
+
+    @classmethod 
+    def exists(cls, name):
+        return name in TTEvent.instances
+
+class ABTTEvent(TTEvent, ABC):
+    @classmethod
+    def get(cls, a, b, date=None):
+        name = cls.getName(a, b)
+        return super().get(name, date)
+
+    @classmethod
+    def exists(cls, a, b):
+        name = cls.getName(a, b)
+        return name in TTEvent.instances
+
+
+class Tournament(ABTTEvent):
+    def getName(id, reg):
         return f"torneo-{id}-{reg}"
 
-    def _nameChmp(camp, inc):
+class ChampionshipMatch(ABTTEvent):
+    def getName(camp, inc):
         return f"partita-{camp}-{inc}"
-
-    def getFromTorneo(id, reg):
-        name = TTEvent._nameTrn(id, reg)
-        return TTEvent.get(name)
-
-    def getFromPartitaCampionato(camionato, incontro):
-        name = TTEvent._nameChmp(camionato, incontro)
-        return TTEvent.get(name)
-
-    def existsTorneo(id, reg):
-        name = TTEvent._nameTrn(id, reg)
-        return name in TTEvent.instances
-
-    def existsPartitaCampionato(camionato, incontro):
-        name = TTEvent._nameChmp(camionato, incontro)
-        return name in TTEvent.instances

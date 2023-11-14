@@ -3,11 +3,11 @@ from bs4 import BeautifulSoup
 import re
 from threading import Lock
 from functools import partial
-from collections import deque
 from icecream import ic
 import json
-from datetime import datetime, timedelta
-from .entities import Match, Player, TTEvent
+from datetime import datetime
+
+from .entities import Match, Player, TTEvent, ChampionshipMatch, Tournament
 from .threadutils import WaitableThreadPool
 
 
@@ -69,23 +69,9 @@ def fetch_giornate(campionato, anno):
     calendar = r.get(URL + "risultati/campionati/Calendario.asp", params={"CAM": campionato, "ANNO": anno}).text
     soup = BeautifulSoup(calendar, "html.parser")
 
-    rows = soup.find_all("tr")
-    # the first element must contain a date
-    rows = [x for x in rows if re.match(r"\d{2}/\d{2}/\d{4}", x.find().text)]
-    rows = [list(x) for x in rows]
+    incontri = soup.find_all("a", string=lambda x: x.strip() != "-")[1:] # first is the STAMPA button
 
-    dates = [row[0].text for row in rows]
-    dates += [row[-1].text for row in rows]
-    dates = [datetime.strptime(date, "%d/%m/%Y") if not "Rinviata" in date else None for date in dates]
-
-    # not played matches have a "-" in the link text
-    andata = [row[2].find("a")["href"] for row in rows if row[2].text.strip() != "-"]
-    ritorno = [row[-3].find("a")["href"] for row in rows if "-" not in row[-3].text.strip() != "-"]
-
-    matches = [parse_url(url) for url in andata + ritorno]
-    dates = dates[:len(matches)]
-
-    return matches, dates # INCONTRO CAM FORMULA
+    return [parse_url(inc["href"]) for inc in incontri] # INCONTRO CAM FORMULA
 
 
 ## Match parsers ##
@@ -153,7 +139,7 @@ def make_match_from_giornata_row(row):
 def parse_eliminatorie_table(rows):
     number = len(rows)
     branches = [[x.text for x in row.find_all("font")] for row in rows]
-    out = deque()
+    out = [] # deque would be better, but the lenght is <100
 
     if number.bit_count() != 1 and number:
         # third fourth place match
@@ -202,7 +188,7 @@ def parse_eliminatorie_score(score):
 class FitetParser:
 
     def __init__(self):
-        self.matches_dump_path = "matches.json"
+        self.matches_dump_path = "fitet/matches2.json"
 
         # Try to load the matches from the dump
         try:
@@ -213,7 +199,8 @@ class FitetParser:
         except FileNotFoundError:
             self.matches = []
 
-        self.matches_lock = Lock()
+        # No lock for matches, list appends are thread-safe
+
         self.pool = WaitableThreadPool(10)
 
     def update(self):
@@ -239,10 +226,10 @@ class FitetParser:
         # self.matches_lock.acquire()
 
     def add_matches_from_giornata(self, incontro, campionato):
-        if TTEvent.existsPartitaCampionato(campionato, incontro):
+        if ChampionshipMatch.exists(campionato, incontro):
             # already parsed
             return
-        event = TTEvent.getFromPartitaCampionato(campionato, incontro)
+        event = ChampionshipMatch.get(campionato, incontro)
 
         risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
         soup = BeautifulSoup(risultato, "html.parser")
@@ -257,11 +244,10 @@ class FitetParser:
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
         for match in out: match.event = event
         
-        with self.matches_lock:
-            self.matches += out
+        self.matches += out
 
     def add_campionato_matches(self, campionato, anno):
-        incontri, dates = fetch_giornate(campionato, anno)
+        incontri  = fetch_giornate(campionato, anno)
         self.pool.starmap_async(self.add_matches_from_giornata, [(i["INCONTRO"], i["CAM"]) for i in incontri])
 
     def add_campionati_matches(self, reg):
@@ -275,10 +261,10 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
-        if TTEvent.existsTorneo(id, reg):
+        if Tournament.exists(id, reg):
             # already parsed
             return
-        event = TTEvent.getFromTorneo(id, reg)
+        event = Tournament.get(id, reg)
 
         date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
         event.date = datetime.strptime(date, "%d/%m/%Y")
@@ -324,8 +310,7 @@ class FitetParser:
         
         for match in out: match.event = event
 
-        with self.matches_lock:
-            self.matches += out
+        self.matches += out
 
     def add_tabellone_gironi(self, path, event):
         tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
@@ -337,8 +322,7 @@ class FitetParser:
         out = list(filter(None, out))
         for match in out: match.event = event
 
-        with self.matches_lock:
-            self.matches += out
+        self.matches += out
 
 
 
