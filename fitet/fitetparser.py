@@ -7,7 +7,7 @@ from collections import deque
 from icecream import ic
 import json
 from datetime import datetime, timedelta
-from .entities import Match, Player, MatchSource
+from .entities import Match, Player, TTEvent
 from .threadutils import WaitableThreadPool
 
 
@@ -239,42 +239,24 @@ class FitetParser:
         # self.matches_lock.acquire()
 
     def add_matches_from_giornata(self, incontro, campionato):
-        if MatchSource.existsPartitaCampionato(campionato, incontro):
+        if TTEvent.existsPartitaCampionato(campionato, incontro):
             # already parsed
             return
+        event = TTEvent.getFromPartitaCampionato(campionato, incontro)
 
         risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
         soup = BeautifulSoup(risultato, "html.parser")
 
         date = soup.find("b", string=re.compile("Giornata")).text
         date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
-        date = datetime.strptime(date, "%d/%m/%Y")
+        event.date = datetime.strptime(date, "%d/%m/%Y")
 
         # get the second div in body direct children of body
         div = soup.body.find_all("div", recursive=False)[1]
         rows = div.find_all("tr")
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
-        for match in out: match.date = date
+        for match in out: match.event = event
         
-        with self.matches_lock:
-            self.matches += out
-
-    def add_tabellone_eliminatorie(self, path, date, source):
-        tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
-        soup = BeautifulSoup(tab, "html.parser")
-        tr = soup.find_all("tr")
-        if soup.find("i"):
-            # i is intestation text for the two tables
-            principale = parse_eliminatorie_table(tr[:len(tr)//2])
-            consolazione = parse_eliminatorie_table(tr[len(tr)//2:])
-            out = principale + consolazione
-        else:
-            out = parse_eliminatorie_table(tr)
-        
-        for match in out: 
-            match.date = date
-            match.source = source
-
         with self.matches_lock:
             self.matches += out
 
@@ -293,13 +275,13 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
-        if MatchSource.existsTorneo(id, reg):
+        if TTEvent.existsTorneo(id, reg):
             # already parsed
             return
-        source = MatchSource.getFromTorneo(id, reg)
+        event = TTEvent.getFromTorneo(id, reg)
 
         date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        date = datetime.strptime(date, "%d/%m/%Y")
+        event.date = datetime.strptime(date, "%d/%m/%Y")
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:
@@ -308,7 +290,7 @@ class FitetParser:
 
         # keys are names
         # values are paths
-        self.pool.starmap_async(partial(self.add_tabellone, date=date, source=source), tabelloni.items())
+        self.pool.starmap_async(partial(self.add_tabellone, event=event), tabelloni.items())
     
     def add_tornei_matches(self, reg, types):
         tornei = self.pool.imap_unordered(partial(fetch_tornei, region=reg), types)
@@ -317,7 +299,35 @@ class FitetParser:
             names_ids = [(name, val["IDT"]) for name, val in torneo_type_dict.items()]
             self.pool.starmap_async(partial(self.add_torneo_matches, reg=reg), names_ids)
 
-    def add_tabellone_gironi(self, path, date, source):
+    def add_tabellone(self, name, path, event):
+        if "gironi" in name:
+            self.add_tabellone_gironi(path, event)
+        elif "eliminatoria" in name:
+            self.add_tabellone_eliminatorie(path, event)
+        elif "Top AB" in name:
+            pass # TODO schifo
+        else:
+            print("Unknown tabellone type", name)
+            print("Path", path)
+
+    def add_tabellone_eliminatorie(self, path, event):
+        tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
+        soup = BeautifulSoup(tab, "html.parser")
+        tr = soup.find_all("tr")
+        if soup.find("i"):
+            # i is intestation text for the two tables
+            principale = parse_eliminatorie_table(tr[:len(tr)//2])
+            consolazione = parse_eliminatorie_table(tr[len(tr)//2:])
+            out = principale + consolazione
+        else:
+            out = parse_eliminatorie_table(tr)
+        
+        for match in out: match.event = event
+
+        with self.matches_lock:
+            self.matches += out
+
+    def add_tabellone_gironi(self, path, event):
         tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
         soup = BeautifulSoup(tab, "html.parser")
         # get all tr withoud bgcolor
@@ -325,23 +335,10 @@ class FitetParser:
         out = [make_match_from_girone_row(tr) for tr in trs]
 
         out = list(filter(None, out))
-        for match in out: 
-            match.date = date
-            match.source = source
+        for match in out: match.event = event
 
         with self.matches_lock:
             self.matches += out
-
-    def add_tabellone(self, name, path, date, source):
-        if "gironi" in name:
-            self.add_tabellone_gironi(path, date, source)
-        elif "eliminatoria" in name:
-            self.add_tabellone_eliminatorie(path, date, source)
-        elif "Top AB" in name:
-            pass # TODO schifo
-        else:
-            print("Unknown tabellone type", name)
-            print("Path", path)
 
 
 

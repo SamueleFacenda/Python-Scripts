@@ -1,5 +1,6 @@
 from fitet.threadutils import WaitableThreadPool
-from datetime import datetime, timedelta
+from datetime import datetime
+from icecream import ic
 
 class Player:
     def __init__(self, name):
@@ -17,52 +18,51 @@ class Player:
             return Player.instances[name]    
 
 class Match:
-    def __init__(self, one, two, score: list[tuple[int, int]], source=None, date=None):
+    def __init__(self, one, two, score: list[tuple[int, int]], event=None):
         self.one: Player = one
         self.two: Player = two
         self.score: list[tuple[int, int]] = score
-        self.date = date
         
         self.one.matches.add(self)
         self.two.matches.add(self)
 
-        self._source = source
-        if source:
-            self._source.matches.add(self)
+        self.event = event
 
     @property
-    def source(self):
-        return self._source
+    def event(self):
+        return self._event
 
-    @source.setter
-    def source(self, value):
-        self._source = value
-        self._source.matches.add(self)
+    @event.setter
+    def event(self, value):
+        self._event = value
+        if value:
+            self._event.matches.add(self)
 
     def __str__(self):
-        return f"{self.date.strftime('%d/%m/%Y')}: {self.one.name} vs {self.two.name} with score {self.score}"
+        return f"{self._event.date.strftime('%d/%m/%Y')}: {self.one.name} vs {self.two.name} with score {self.score}"
 
     def serialize(self):
-        return {"one": self.one.name, "two": self.two.name, "score": self.score, "date": self.date.strftime('%d/%m/%Y'), "source": self._source.name }
+        return {"one": self.one.name, "two": self.two.name, "score": self.score, "date": self._event.date.strftime('%d/%m/%Y'), "source": self._event.name }
 
     def deserialize(data):
-        return Match(Player.get(data["one"]), Player.get(data["two"]), [tuple(x) for x in data["score"]], MatchSource.get(data["source"]), datetime.strptime(data["date"], "%d/%m/%Y"))
+        return Match(Player.get(data["one"]), Player.get(data["two"]), [tuple(x) for x in data["score"]], TTEvent.get(data["source"], datetime.strptime(data["date"], "%d/%m/%Y")))
 
-    def __hash__(self):
-        return hash((self.one.name, self.two.name, tuple(self.score)))#, self._source.name))#, self.date)
+    #def __hash__(self):
+    #    return hash((self.one.name, self.two.name, tuple(self.score)))#, self._source.name))#, self.date) TODO
 
-class MatchSource:
-    instances: dict[str, "MatchSource"] = {}
+class TTEvent:
+    instances: dict[str, "TTEvent"] = {}
 
-    def __init__(self, name):
+    def __init__(self, name, date):
         self.name: str = name
+        self.date: datetime = date
         self.matches: set["Match"] = set()
         
-    def get(name):
-        if name not in MatchSource.instances:
-            MatchSource.instances[name] = MatchSource(name)
+    def get(name, date=None):
+        if name not in TTEvent.instances:
+            TTEvent.instances[name] = TTEvent(name, date)
 
-        return MatchSource.instances[name]
+        return TTEvent.instances[name]
 
     def _nameTrn(id, reg):
         return f"torneo-{id}-{reg}"
@@ -71,17 +71,17 @@ class MatchSource:
         return f"partita-{camp}-{inc}"
 
     def getFromTorneo(id, reg):
-        name = MatchSource._nameTrn(id, reg)
-        return MatchSource.get(name)
+        name = TTEvent._nameTrn(id, reg)
+        return TTEvent.get(name)
 
     def getFromPartitaCampionato(camionato, incontro):
-        name = MatchSource._nameChmp(camionato, incontro)
-        return MatchSource.get(name)
+        name = TTEvent._nameChmp(camionato, incontro)
+        return TTEvent.get(name)
 
     def existsTorneo(id, reg):
-        name = MatchSource._nameTrn(id, reg)
-        return name in MatchSource.instances
+        name = TTEvent._nameTrn(id, reg)
+        return name in TTEvent.instances
 
     def existsPartitaCampionato(camionato, incontro):
-        name = MatchSource._nameChmp(camionato, incontro)
-        return name in MatchSource.instances
+        name = TTEvent._nameChmp(camionato, incontro)
+        return name in TTEvent.instances
