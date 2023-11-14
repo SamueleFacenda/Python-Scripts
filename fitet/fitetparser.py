@@ -5,48 +5,10 @@ from threading import Lock
 from functools import partial
 from collections import deque
 from icecream import ic
-from time import sleep
-from fitet.threadutils import WaitableThreadPool
-import pickle
 import json
 from datetime import datetime, timedelta
-
-class Player:
-    def __init__(self, name):
-        self.name: str = name
-        self.matches: set["Match"] = set()
-        # print(f"Created player {name}")
-
-    instances: dict[str, "Player"] = {}
-    def get(name) -> "Player":
-        name = name.strip().title()
-        if name in Player.instances:
-            return Player.instances[name]
-        else:
-            Player.instances[name] = Player(name)
-            return Player.instances[name]    
-
-class Match:
-    def __init__(self, one, two, score: list[tuple[int, int]], date=None):
-        self.one: Player = one
-        self.two: Player = two
-        self.score: list[tuple[int, int]] = score
-        self.date = date
-        
-        self.one.matches.add(self)
-        self.two.matches.add(self)
-
-    def __str__(self):
-        return f"{self.date.strftime('%d/%m/%Y')}: {self.one.name} vs {self.two.name} with score {self.score}"
-
-    def serialize(self):
-        return {"one": self.one.name, "two": self.two.name, "score": self.score, "date": self.date.strftime('%d/%m/%Y') }
-
-    def deserialize(data):
-        return Match(Player.get(data["one"]), Player.get(data["two"]), [tuple(x) for x in data["score"]], datetime.strptime(data["date"], "%d/%m/%Y"))
-
-    def __hash__(self):
-        return hash((self.one.name, self.two.name, tuple(self.score)))#, self.date)
+from .entities import Match, Player, MatchSource
+from .threadutils import WaitableThreadPool
 
 
 class Error404(Exception): pass
@@ -235,11 +197,11 @@ def parse_eliminatorie_score(score):
 
 
 
-##
+## Container class for parsing ##
 
 class FitetParser:
 
-    def __init__(self, safetyWindowDays=7):
+    def __init__(self):
         self.matches_dump_path = "matches.json"
 
         # Try to load the matches from the dump
@@ -247,24 +209,20 @@ class FitetParser:
             with open(self.matches_dump_path, "r") as f:
                 self.matches = json.load(f)
                 self.matches = [Match.deserialize(m) for m in self.matches]
-                self.latest_date = max([m.date for m in self.matches])
-                # remove one week from the latest date, not wveryone uploads the matches immediately
-                self.latest_date -= timedelta(days=safetyWindowDays)
-                self.matches = [m for m in self.matches if m.date <= self.latest_date]
 
         except FileNotFoundError:
             self.matches = []
-            self.latest_date = datetime(1970, 1, 1)
 
         self.matches_lock = Lock()
         self.pool = WaitableThreadPool(10)
 
     def update(self):
-        self.get_all_matches(["Trentino"])
+        self.add_all_new_matches(["Trentino"])
+
         with open(self.matches_dump_path, "w") as f:
             json.dump([x.serialize() for x in self.matches], f)
 
-    def get_all_matches(self, wanted_regions=None):
+    def add_all_new_matches(self, wanted_regions=None):
 
         regs = fetch_regioni()
         regs = {k:v for k,v in regs.items() if k in wanted_regions}
@@ -280,8 +238,12 @@ class FitetParser:
         self.pool.wait_and_end()
         # self.matches_lock.acquire()
 
-    def get_matches_from_giornata(self, giornata, campionato):
-        risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": giornata, "FORMULA": 1}).text
+    def add_matches_from_giornata(self, incontro, campionato):
+        if MatchSource.existsPartitaCampionato(campionato, incontro):
+            # already parsed
+            return
+
+        risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
         soup = BeautifulSoup(risultato, "html.parser")
 
         date = soup.find("b", string=re.compile("Giornata")).text
@@ -297,7 +259,7 @@ class FitetParser:
         with self.matches_lock:
             self.matches += out
 
-    def add_tabellone_eliminatorie(self, path, date):
+    def add_tabellone_eliminatorie(self, path, date, source):
         tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
         soup = BeautifulSoup(tab, "html.parser")
         tr = soup.find_all("tr")
@@ -309,16 +271,16 @@ class FitetParser:
         else:
             out = parse_eliminatorie_table(tr)
         
-        for match in out: match.date = date
+        for match in out: 
+            match.date = date
+            match.source = source
 
         with self.matches_lock:
             self.matches += out
 
     def add_campionato_matches(self, campionato, anno):
         incontri, dates = fetch_giornate(campionato, anno)
-        incontri = [inc for inc, date in zip(incontri, dates) if date > self.latest_date]
-
-        self.pool.starmap_async(self.get_matches_from_giornata, [(i["INCONTRO"], i["CAM"]) for i in incontri])
+        self.pool.starmap_async(self.add_matches_from_giornata, [(i["INCONTRO"], i["CAM"]) for i in incontri])
 
     def add_campionati_matches(self, reg):
         campionati = fetch_campionati(reg)
@@ -331,12 +293,13 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
-        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        date = datetime.strptime(date, "%d/%m/%Y")
-
-        if date <= self.latest_date:
+        if MatchSource.existsTorneo(id, reg):
             # already parsed
             return
+        source = MatchSource.getFromTorneo(id, reg)
+
+        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
+        date = datetime.strptime(date, "%d/%m/%Y")
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:
@@ -345,7 +308,7 @@ class FitetParser:
 
         # keys are names
         # values are paths
-        self.pool.starmap_async(partial(self.add_tabellone, date=date), tabelloni.items())
+        self.pool.starmap_async(partial(self.add_tabellone, date=date, source=source), tabelloni.items())
     
     def add_tornei_matches(self, reg, types):
         tornei = self.pool.imap_unordered(partial(fetch_tornei, region=reg), types)
@@ -354,7 +317,7 @@ class FitetParser:
             names_ids = [(name, val["IDT"]) for name, val in torneo_type_dict.items()]
             self.pool.starmap_async(partial(self.add_torneo_matches, reg=reg), names_ids)
 
-    def add_tabellone_gironi(self, path, date):
+    def add_tabellone_gironi(self, path, date, source):
         tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
         soup = BeautifulSoup(tab, "html.parser")
         # get all tr withoud bgcolor
@@ -362,16 +325,18 @@ class FitetParser:
         out = [make_match_from_girone_row(tr) for tr in trs]
 
         out = list(filter(None, out))
-        for match in out: match.date = date
+        for match in out: 
+            match.date = date
+            match.source = source
 
         with self.matches_lock:
             self.matches += out
 
-    def add_tabellone(self, name, path, date):
+    def add_tabellone(self, name, path, date, source):
         if "gironi" in name:
-            self.add_tabellone_gironi(path, date)
+            self.add_tabellone_gironi(path, date, source)
         elif "eliminatoria" in name:
-            self.add_tabellone_eliminatorie(path, date)
+            self.add_tabellone_eliminatorie(path, date, source)
         elif "Top AB" in name:
             pass # TODO schifo
         else:
