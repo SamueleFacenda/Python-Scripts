@@ -71,6 +71,7 @@ class TTEvent():
     def exists(cls, name):
         return name in TTEvent.instances
 
+
 class ABTTEvent(TTEvent, ABC):
     @classmethod
     def get(cls, a, b, date=None):

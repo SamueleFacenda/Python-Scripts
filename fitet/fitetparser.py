@@ -188,7 +188,7 @@ def parse_eliminatorie_score(score):
 class FitetParser:
 
     def __init__(self):
-        self.matches_dump_path = "fitet/matches2.json"
+        self.matches_dump_path = "fitet/matches.json"
 
         # Try to load the matches from the dump
         try:
@@ -223,7 +223,6 @@ class FitetParser:
 
         # wait for all threads to finish, then make sure no strange thigs modify the output
         self.pool.wait_and_end()
-        # self.matches_lock.acquire()
 
     def add_matches_from_giornata(self, incontro, campionato):
         if ChampionshipMatch.exists(campionato, incontro):
