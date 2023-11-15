@@ -32,8 +32,8 @@ class RunnerCounter:
             try:
                 out = fn(*args, **kwargs)
             except:
-                self.sub()
                 logging.exception(f"Error in wrapped function {args=} {kwargs=}")
+                out = None
             self.sub()
             return out
         return wrapped
