@@ -1,3 +1,3 @@
-from fitet.fitetparser import FitetParser, main as fetch_all
+from .fitetparser import FitetParser
 
-from fitet.entities import Player, Match, TTEvent
+from .entities import Player, Match, TTEvent

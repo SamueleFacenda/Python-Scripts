@@ -187,14 +187,15 @@ def parse_eliminatorie_score(score):
 
 class FitetParser:
 
-    def __init__(self):
-        self.matches_dump_path = "fitet/matches.json"
+    def __init__(self, dump_path):
+        self.matches_dump_path = dump_path
 
         # Try to load the matches from the dump
         try:
             with open(self.matches_dump_path, "r") as f:
                 self.matches = json.load(f)
-                self.matches = [Match.deserialize(m) for m in self.matches]
+                
+            self.matches = [Match.deserialize(m) for m in self.matches]
 
         except FileNotFoundError:
             self.matches = []
@@ -203,8 +204,8 @@ class FitetParser:
 
         self.pool = WaitableThreadPool(10)
 
-    def update(self):
-        self.add_all_new_matches(["Trentino"])
+    def update(self, wanted_regions=None):
+        self.add_all_new_matches(wanted_regions)
 
         with open(self.matches_dump_path, "w") as f:
             json.dump([x.serialize() for x in self.matches], f)
@@ -212,7 +213,7 @@ class FitetParser:
     def add_all_new_matches(self, wanted_regions=None):
 
         regs = fetch_regioni()
-        regs = {k:v for k,v in regs.items() if k in wanted_regions}
+        regs = {k:v for k,v in regs.items() if (not wanted_regions or k in wanted_regions)}
         regs = [x["REG"] for x in regs.values()]
 
         tornei_types = fetch_tornei_types(regs[0])
@@ -322,15 +323,3 @@ class FitetParser:
         for match in out: match.event = event
 
         self.matches += out
-
-
-
-def main():
-
-    parser = FitetParser()
-    parser.update()
-    print(len(parser.matches))
-    for match in Player.get("Facenda Samuele").matches: print(match)
-
-if __name__ == "__main__":
-    main()
