@@ -25,6 +25,6 @@ Sofia Bianchi 203939 23.3
 Sofia Gutierrez 210987 25.3
 Chiara Martini 213456 28.5
 Raj Kapoor 209876 28.2
-Martina De Luca 203456 27.6
+Martina De_Luca 203456 27.6
 Lina Nguyen 215723 24.9
 Matteo Conti 215432 21.7
