@@ -50,36 +50,39 @@ Studente** fetchDB(char* file, int &count) {
     float media;
     
     int len = 10;
-    count = -1;
+    count = 0;
     Studente **out = new Studente*[len];
     while(!dbFile.fail() && !dbFile.eof()) {
-        count++;
 
         if (count == len) {
             extend((void***) &out, len);
         }
     
         dbFile >> name >> surname >> matr >> media;
-        out[count] = mkStudente(name, surname, matr, media);
+        if (!dbFile.fail()) { 
+            out[count] = mkStudente(name, surname, matr, media);
+            count++;
+        }
+
     }
     return out;
 }
 
 int cercaMatricola(Studente **db, int len, int matricola) {
     int i=0;
-    for(int i=0; i<len && db[i]->matricola != matricola; i++);
+    for(i=0; i<len && db[i]->matricola != matricola; i++);
     return i==len ? -1 : i;
 }
 
 int strcmp(char a[], char b[]) {
     int i;
     for(i=0; a[i] && b[i] && a[i]==b[i]; i++);
-    return a[i] == b[i];
+    return a[i] - b[i];
 }
 
 int cercaNomeCognome(Studente** db, int len, char name[], char surname[]) {
     int i=0;
-    for(int i=0; i<len && strcmp(name, db[i]->name) && strcmp(surname, db[i]->surname); i++);
+    for(i=0; i<len && strcmp(name, db[i]->name) && strcmp(surname, db[i]->surname); i++);
     return i==len ? -1 : i;
 }
 
@@ -131,7 +134,7 @@ void wrapCercaMatricola(Studente** db, int count) {
     int tmp;
     cin >> tmp;
     tmp = cercaMatricola(db,count, tmp);
-    if (tmp > 0)
+    if (tmp >= 0)
         stampaStudente(db[tmp]);
     else
         cout << "Impossibile trovare la matricola :(" << endl;
@@ -142,14 +145,14 @@ void wrapCercaNomeCognome(Studente** db, int count) {
     char nome[NAME_LENGHT], cognome[NAME_LENGHT];
     cin >> nome >> cognome;
     int tmp = cercaNomeCognome(db,count, nome, cognome);
-    if (tmp > 0)
+    if (tmp >= 0)
         stampaStudente(db[tmp]);
     else
         cout << "Impossibile trovare lo studente :(" << endl;
 }
 
 void wrapCercaMedia(Studente** db, int count) {
-    int tmp = studenteTopMedia(db,count);
+    int tmp = studenteTopMedia(db, count);
     if (tmp > 0)
         stampaStudente(db[tmp]);
     else
@@ -168,7 +171,6 @@ void wrapCaricaStudenti(Studente** &db, int &len, int &count) {
             extend((void***) &db, len);
     
         db[count] = newDb[i];
-        stampaStudente(db[count]);
         count++;
     }
     delete[] newDb;
@@ -213,7 +215,6 @@ signed main(int argc, char** argv) {
     while(choice = getChoice())
         menu(db, len, count, choice);
 
-    cout << count << endl;
     for(int i=0; i<count; i++)
         delete db[i];
     delete[] db;
