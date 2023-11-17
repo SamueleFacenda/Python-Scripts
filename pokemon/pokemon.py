@@ -2,6 +2,7 @@
 from tqdm import tqdm, trange
 import os
 import requests as req
+from sys import argv
 
 # pip install pokebase, può dare problemi con versione python 3.10
 
@@ -47,10 +48,13 @@ def get_max_index(file):
     for line in file:
         if len(line.strip()) == 0 or line[0] == "#":
             continue
-        max_i = int(line.split(",")[0])
+        try:
+            max_i = int(line.split(",")[0])
+        except ValueError:
+            continue
     return max_i
 
-path = "pokedex.csv"
+path = "pokedex.csv" if len(argv) == 1 else argv[1]
 exist = os.path.isfile(path)
 
 if exist:
@@ -79,7 +83,7 @@ with open(path, "a" if exist else "w") as f:
         f.write(",".join(
             [
                 str(i),
-                tmp['name'],
+                tmp['name'].lower(),
                 tmp['types'][0]['type']['name'],
                 tmp['types'][1]['type']['name'] if len(tmp['types']) != 1 else "",
                 str(sum([x['base_stat'] for x in tmp['stats']])),
@@ -87,7 +91,6 @@ with open(path, "a" if exist else "w") as f:
             [str(x['base_stat']) for x in tmp['stats']] + 
             [
                 str(romanToDecimal(tmp_spec['generation']['name'].split("-")[1].upper())),
-                str(tmp_spec['is_legendary']),
-                "\n"
+                str(tmp_spec['is_legendary'])
             ]
-        ))
+        ) + "\n")

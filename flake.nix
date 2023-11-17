@@ -64,6 +64,7 @@
                 icecream
                 pillow
                 tqdm
+                pandas
               ]))
             ];
 
