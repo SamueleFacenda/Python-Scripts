@@ -3,56 +3,30 @@ from tqdm import tqdm, trange
 import os
 import requests as req
 from sys import argv
-
-# pip install pokebase, può dare problemi con versione python 3.10
+from multiprocessing.pool import ThreadPool
 
 # conversion da numeri romani a decimali, brutal copy-paste
-def value(r):
-    if (r == 'I'):
-        return 1
-    if (r == 'V'):
-        return 5
-    if (r == 'X'):
-        return 10
-    if (r == 'L'):
-        return 50
-    if (r == 'C'):
-        return 100
-    if (r == 'D'):
-        return 500
-    if (r == 'M'):
-        return 1000
-    return -1
- 
-def romanToDecimal(str):
-    res = 0
-    i = 0
-    while (i < len(str)):
-        s1 = value(str[i])
-        if (i + 1 < len(str)):
-            s2 = value(str[i + 1])
-            if (s1 >= s2):
-                res = res + s1
-                i = i + 1
-            else:
-                res = res + s2 - s1
-                i = i + 2
-        else:
-            res = res + s1
-            i = i + 1
-    return res
 
-# legge un file e (dovrebbe essere un csv pokemon) ritorna il numero dell'ultimo pokemon aggiunto
+romanValue = {
+    'i': 1,
+    'ii': 2,
+    'iii': 3,
+    'iv': 4,
+    'v': 5,
+    'vi': 6,
+    'vii': 7,
+    'viii': 8,
+    'ix': 9,
+    'x': 10,
+    'xi': 11,
+    'xii': 12,
+}
+
+
+# legge un file e (dovrebbe essere un csv pokemon) ritorna il numero dell'indice massimo
 def get_max_index(file):
-    max_i = 0
-    for line in file:
-        if len(line.strip()) == 0 or line[0] == "#":
-            continue
-        try:
-            max_i = int(line.split(",")[0])
-        except ValueError:
-            continue
-    return max_i
+    indexes = [int(line.split(",")[0]) for line in file if len(line.strip()) != 0 and not line.startswith("Name")]
+    return max(indexes)
 
 path = "pokedex.csv" if len(argv) == 1 else argv[1]
 exist = os.path.isfile(path)
@@ -63,34 +37,40 @@ if exist:
 else:
     max_i = 0
 
+def getPokemon(pokedex_number):
+    try:
+        url = "https://pokeapi.co/api/v2/pokemon-species/" + str(pokedex_number)
+        specie_stats = req.get(url).json()
+        url = "https://pokeapi.co/api/v2/pokemon/" + str(pokedex_number)
+        pokemon_stats = req.get(url).json()
+    except:
+        print(pokedex_number)
+        return None
+
+    return {
+        "id": str(pokedex_number),
+        "name": pokemon_stats['name'].lower(),
+        "type1": pokemon_stats['types'][0]['type']['name'],
+        "type2": pokemon_stats['types'][1]['type']['name'] if len(pokemon_stats['types']) != 1 else "",
+        "total": str(sum([x['base_stat'] for x in pokemon_stats['stats']])),
+        "hp": str(pokemon_stats['stats'][0]['base_stat']),
+        "attack": str(pokemon_stats['stats'][1]['base_stat']),
+        "defense": str(pokemon_stats['stats'][2]['base_stat']),
+        "sp_attack": str(pokemon_stats['stats'][3]['base_stat']),
+        "sp_defense": str(pokemon_stats['stats'][4]['base_stat']),
+        "speed": str(pokemon_stats['stats'][5]['base_stat']),
+        "generation": str(romanValue[specie_stats['generation']['name'].split("-")[1]]),
+        "legendary": str(specie_stats['is_legendary'])
+    }
+
+poke_count = req.get("https://pokeapi.co/api/v2/pokemon-species/").json()['count']
 
 with open(path, "a" if exist else "w") as f:
     if not exist:
         f.write("Name,Type 1,Type 2,Total,HP,Attack,Defense,Sp. Atk,Sp. Def,Speed,Generation,Legendary\n")
 
-    for i in trange(max_i+1,1009):
-        try:
-            # tmp= pb.pokemon(i)
-            # tmp_spec = pb.pokemon_species(i)
-            url = " https://pokeapi.co/api/v2/pokemon-species/" + str(i)
-            tmp_spec = req.get(url).json()
-            url = " https://pokeapi.co/api/v2/pokemon/" + str(i)
-            tmp = req.get(url).json()
-        except:
-            print(i)
-            break
+    with ThreadPool(20) as pool:
 
-        f.write(",".join(
-            [
-                str(i),
-                tmp['name'].lower(),
-                tmp['types'][0]['type']['name'],
-                tmp['types'][1]['type']['name'] if len(tmp['types']) != 1 else "",
-                str(sum([x['base_stat'] for x in tmp['stats']])),
-            ] +
-            [str(x['base_stat']) for x in tmp['stats']] + 
-            [
-                str(romanToDecimal(tmp_spec['generation']['name'].split("-")[1].upper())),
-                str(tmp_spec['is_legendary'])
-            ]
-        ) + "\n")
+        for i in tqdm(pool.imap(getPokemon, range(max_i+1,poke_count+1)), total=poke_count-max_i):
+            f.write(",".join(i.values()) + "\n")
+
