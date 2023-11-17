@@ -1,11 +1,8 @@
 # import pokebase as pb
-from tqdm import tqdm, trange
-import os
+from tqdm import tqdm
 import requests as req
 from sys import argv
 from multiprocessing.pool import ThreadPool
-
-# conversion da numeri romani a decimali, brutal copy-paste
 
 romanValue = {
     'i': 1,
@@ -29,12 +26,13 @@ def get_max_index(file):
     return max(indexes)
 
 path = "pokedex.csv" if len(argv) == 1 else argv[1]
-exist = os.path.isfile(path)
 
-if exist:
+try:
     with open(path,"r") as f:
         max_i = get_max_index(f)
-else:
+    already_exist = True
+except FileNotFoundError:
+    already_exist = False
     max_i = 0
 
 def getPokemon(pokedex_number):
@@ -65,8 +63,8 @@ def getPokemon(pokedex_number):
 
 poke_count = req.get("https://pokeapi.co/api/v2/pokemon-species/").json()['count']
 
-with open(path, "a" if exist else "w") as f:
-    if not exist:
+with open(path, "a" if already_exist else "w") as f:
+    if not already_exist:
         f.write("Name,Type 1,Type 2,Total,HP,Attack,Defense,Sp. Atk,Sp. Def,Speed,Generation,Legendary\n")
 
     with ThreadPool(20) as pool:
