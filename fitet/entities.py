@@ -29,7 +29,7 @@ class Player(Base):
     __tablename__ = "player"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
-    matches: Mapped[List["Match"]] = relationship("Match", foreign_keys="[Match.one_id, Match.two_id]", back_populates="players", cascade="all, delete-orphan") 
+    matches: Mapped[List["Match"]] = relationship(foreign_keys="[Match.one_id, Match.two_id]", back_populates="players", cascade="all, delete-orphan") 
 
     # @add_to_session
     def __init__(self, name):
@@ -54,8 +54,8 @@ class Match(Base):
     two_id: Mapped[int] = mapped_column(ForeignKey("player.id"), nullable=False)
     score: Mapped[list[Tuple[int, int]]] = mapped_column(String(80), nullable=False)
     event_id: Mapped[int] = mapped_column(ForeignKey("event.id"), nullable=False)
-    event: Mapped["TTEvent"] = relationship("TTEvent", back_populates="matches")
-    players: Mapped[List["Player"]] = relationship("Player", foreign_keys=[one_id, two_id], back_populates="matches")
+    event: Mapped["TTEvent"] = relationship(back_populates="matches")
+    players: Mapped[List["Player"]] = relationship(foreign_keys=[one_id, two_id], back_populates="matches")
 
     # @add_to_session
     def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"):
@@ -80,7 +80,7 @@ class TTEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
     date: Mapped[datetime | None]
-    matches: Mapped[List["Match"]] = relationship("Match", back_populates="event", cascade="all, delete-orphan")
+    matches: Mapped[List["Match"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
     # @add_to_session
     def __init__(self, name, date=None):
