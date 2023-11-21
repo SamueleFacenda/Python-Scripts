@@ -199,9 +199,6 @@ class FitetParser:
     def update(self, wanted_regions=None):
         self.add_all_new_matches(wanted_regions)
 
-        with open(self.matches_dump_path, "w") as f:
-            json.dump([x.serialize() for x in self.matches], f)
-
     def add_all_new_matches(self, wanted_regions=None):
 
         regs = fetch_regioni()
@@ -235,9 +232,9 @@ class FitetParser:
         div = soup.body.find_all("div", recursive=False)[1]
         rows = div.find_all("tr")
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
-        with update_persistency():
-            for match in out: match.event = event
+        for match in out: match.event = event
         
+        Match.persist_all(out)
         self.matches += out
 
     def add_campionato_matches(self, campionato, anno):
@@ -261,8 +258,7 @@ class FitetParser:
         event = Tournament.get(id, reg)
 
         date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        with update_persistency():
-            event.date = datetime.strptime(date, "%d/%m/%Y")
+        event.date = datetime.strptime(date, "%d/%m/%Y")
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:
@@ -303,9 +299,9 @@ class FitetParser:
         else:
             out = parse_eliminatorie_table(tr)
         
-        with update_persistency():
-            for match in out: match.event = event
+        for match in out: match.event = event
 
+        Match.persist_all(out)
         self.matches += out
 
     def add_tabellone_gironi(self, path, event):
@@ -316,7 +312,7 @@ class FitetParser:
         out = [make_match_from_girone_row(tr) for tr in trs]
 
         out = list(filter(None, out))
-        with update_persistency():
-            for match in out: match.event = event
+        for match in out: match.event = event
 
+        Match.persist_all(out)
         self.matches += out

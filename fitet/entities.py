@@ -31,7 +31,7 @@ class Player(Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     matches: Mapped[List["Match"]] = relationship("Match", foreign_keys="[Match.one_id, Match.two_id]", back_populates="players", cascade="all, delete-orphan") 
 
-    @add_to_session
+    # @add_to_session
     def __init__(self, name):
         super().__init__(name=name)
 
@@ -57,7 +57,7 @@ class Match(Base):
     event: Mapped["TTEvent"] = relationship("TTEvent", back_populates="matches")
     players: Mapped[List["Player"]] = relationship("Player", foreign_keys=[one_id, two_id], back_populates="matches")
 
-    @add_to_session
+    # @add_to_session
     def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"):
         super().__init__(one=one, two=two, score=score, event=event)
 
@@ -70,6 +70,11 @@ class Match(Base):
             out = session.query(Match).all()
         return out
 
+    @staticmethod
+    def persist_all(matches):
+        with Session().begin() as session:
+            session.add_all(matches)
+
 class TTEvent(Base):
     __tablename__ = "event"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -77,7 +82,7 @@ class TTEvent(Base):
     date: Mapped[datetime | None]
     matches: Mapped[List["Match"]] = relationship("Match", back_populates="event", cascade="all, delete-orphan")
 
-    @add_to_session
+    # @add_to_session
     def __init__(self, name, date=None):
         super().__init__(name=name, date=date)
         
