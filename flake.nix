@@ -65,6 +65,8 @@
                 pillow
                 tqdm
                 pandas
+                pyautogui
+                keyboard
               ]))
             ];
 
