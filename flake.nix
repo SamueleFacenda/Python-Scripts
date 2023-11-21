@@ -67,6 +67,7 @@
                 pandas
                 pyautogui
                 keyboard
+                sqlalchemy
               ]))
             ];
 

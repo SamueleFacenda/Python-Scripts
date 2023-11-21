@@ -7,7 +7,7 @@ from icecream import ic
 import json
 from datetime import datetime
 
-from .entities import Match, Player, TTEvent, ChampionshipMatch, Tournament
+from .entities import Match, Player, TTEvent, ChampionshipMatch, Tournament, update_persistency
 from .threadutils import WaitableThreadPool
 
 
@@ -190,15 +190,7 @@ class FitetParser:
     def __init__(self, dump_path):
         self.matches_dump_path = dump_path
 
-        # Try to load the matches from the dump
-        try:
-            with open(self.matches_dump_path, "r") as f:
-                self.matches = json.load(f)
-                
-            self.matches = [Match.deserialize(m) for m in self.matches]
-
-        except FileNotFoundError:
-            self.matches = []
+        self.matches = Match.get_all()
 
         # No lock for matches, list appends are thread-safe
 
@@ -236,13 +228,15 @@ class FitetParser:
 
         date = soup.find("b", string=re.compile("Giornata")).text
         date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
-        event.date = datetime.strptime(date, "%d/%m/%Y")
+        with update_persistency():
+            event.date = datetime.strptime(date, "%d/%m/%Y")
 
         # get the second div in body direct children of body
         div = soup.body.find_all("div", recursive=False)[1]
         rows = div.find_all("tr")
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
-        for match in out: match.event = event
+        with update_persistency():
+            for match in out: match.event = event
         
         self.matches += out
 
@@ -267,7 +261,8 @@ class FitetParser:
         event = Tournament.get(id, reg)
 
         date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        event.date = datetime.strptime(date, "%d/%m/%Y")
+        with update_persistency():
+            event.date = datetime.strptime(date, "%d/%m/%Y")
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:
@@ -308,7 +303,8 @@ class FitetParser:
         else:
             out = parse_eliminatorie_table(tr)
         
-        for match in out: match.event = event
+        with update_persistency():
+            for match in out: match.event = event
 
         self.matches += out
 
@@ -320,6 +316,7 @@ class FitetParser:
         out = [make_match_from_girone_row(tr) for tr in trs]
 
         out = list(filter(None, out))
-        for match in out: match.event = event
+        with update_persistency():
+            for match in out: match.event = event
 
         self.matches += out

@@ -1,120 +1,120 @@
 from datetime import datetime
 from abc import ABC, abstractmethod
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, relationship, mapped_column, sessionmaker
+from typing import Optional, List, Set, Tuple
+from sqlalchemy import create_engine
 
-class Player:
+engine = create_engine("sqlite://", echo=True)
+Session = sessionmaker(engine)
+
+class Base(DeclarativeBase):
+    pass
+
+# decorator
+def add_to_session(func):
+    def wrapper(self, *args, **kwargs):
+        with Session().begin() as session:
+            out = func(self, *args, **kwargs)
+            session.add(self)
+            return out
+    return wrapper
+
+# to be used with "with" statement
+def update_persistency(func):
+    return Session().begin()
+
+
+class Player(Base):
+    __tablename__ = "player"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    matches: Mapped[List["Match"]] = relationship("Match", foreign_keys="[Match.one_id, Match.two_id]", back_populates="players", cascade="all, delete-orphan") 
+
+    @add_to_session
     def __init__(self, name):
-        self.name: str = name
-        self.matches: set["Match"] = set()
-        # print(f"Created player {name}")
-
-    instances: dict[str, "Player"] = {}
+        super().__init__(name=name)
 
     @staticmethod
-    def get(name) -> "Player":
-        name = name.strip().title()
-        if name in Player.instances:
-            return Player.instances[name]
-        else:
-            Player.instances[name] = Player(name)
-            return Player.instances[name]    
+    def get_or_create(name):
+        with Session().begin() as session:
+            player = session.query(Player).filter_by(name=name).first()
+            if player is None:
+                player = Player(name)
+                session.add(player)
+        return player
 
-class Match:
-    def __init__(self, one, two, score: list[tuple[int, int]], event=None):
-        self.one: Player = one
-        self.two: Player = two
-        self.score: list[tuple[int, int]] = score
-        
-        self.one.matches.add(self)
-        self.two.matches.add(self)
+    def __repr__(self):
+        return f"<Player {self.name}>"
 
-        self.event = event
+class Match(Base):
+    __tablename__ = "match"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    one_id: Mapped[int] = mapped_column(ForeignKey("player.id"), nullable=False)
+    two_id: Mapped[int] = mapped_column(ForeignKey("player.id"), nullable=False)
+    score: Mapped[list[Tuple[int, int]]] = mapped_column(String(80), nullable=False)
+    event_id: Mapped[int] = mapped_column(ForeignKey("event.id"), nullable=False)
+    event: Mapped["TTEvent"] = relationship("TTEvent", back_populates="matches")
+    players: Mapped[List["Player"]] = relationship("Player", foreign_keys=[one_id, two_id], back_populates="matches")
 
-    @property
-    def event(self):
-        return self._event
+    @add_to_session
+    def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"):
+        super().__init__(one=one, two=two, score=score, event=event)
 
-    @event.setter
-    def event(self, value):
-        self._event = value
-        if value:
-            self._event.matches.add(self)
-
-    def __str__(self):
-        return f"{self._event.date.strftime('%d/%m/%Y')}: {self.one.name} vs {self.two.name} with score {self.score}"
-
-    def serialize(self):
-        return {
-            "one": self.one.name, 
-            "two": self.two.name, 
-            "score": self.score,
-            "source": self._event.serialize() }
+    def __repr__(self):
+        return f"<Match {self.one} vs {self.two} {self.score}>"
 
     @staticmethod
-    def deserialize(data):
-        return Match(
-            Player.get(data["one"]), 
-            Player.get(data["two"]), 
-            [tuple(x) for x in data["score"]], 
-            ABTTEvent.deserialize(data["source"]))
+    def get_all():
+        with Session() as session:
+            out = session.query(Match).all()
+        return out
 
-    #def __hash__(self):
-    #    return hash((self.one.name, self.two.name, tuple(self.score)))#, self._source.name))#, self.date) TODO
+class TTEvent(Base):
+    __tablename__ = "event"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    date: Mapped[datetime | None]
+    matches: Mapped[List["Match"]] = relationship("Match", back_populates="event", cascade="all, delete-orphan")
 
-class TTEvent(ABC):
-    instances: dict[str, "TTEvent"] = {}
-
-    def __init__(self, name, date):
-        self.name: str = name
-        self.date: datetime = date
-        self.matches: set["Match"] = set()
+    @add_to_session
+    def __init__(self, name, date=None):
+        super().__init__(name=name, date=date)
         
-    @classmethod 
-    def get(cls, name, date=None):
-        if name not in TTEvent.instances:
-            TTEvent.instances[name] = cls(name, date)
-
-        return TTEvent.instances[name]
+    @classmethod
+    def get_or_create(cls, name, date=None):
+        with Session().begin() as session:
+            event = session.query(TTevent).filter_by(name=name).first()
+            if event is None:
+                event = cls(name=name, date=date)
+                session.add(event)
+        return event
+        
 
     @staticmethod
     @abstractmethod
     def getName(a, b):
         raise NotImplementedError
 
-    @classmethod 
-    def exists(cls, name):
-        return name in TTEvent.instances
-
-    @abstractmethod
-    def serialize(self):
-        raise NotImplementedError
-
     @staticmethod
-    def deserialize(data):
-        raise NotImplementedError
+    def exists(name):
+        with Session(engine) as session:
+            return session.query(TTevent).filter_by(name=name).first() is not None
+
+    def __repr__(self):
+        return f"<TTEvent {self.name} {self.date}>"
 
 
-class ABTTEvent(TTEvent, ABC):
+class ABTTEvent(TTEvent):
     @classmethod
-    def get(cls, a, b, date=None):
+    def get_or_create(cls, a, b, date=None):
         name = cls.getName(a, b)
-        return super().get(name, date)
+        return super().get_or_create(name, date)
 
     @classmethod
     def exists(cls, a, b):
         name = cls.getName(a, b)
-        return name in TTEvent.instances
-
-    def serialize(self):
-        tipe, a, b = self.name.split("-")
-        date = self.date.strftime("%d/%m/%Y") if self.date else None
-        return {"type": tipe, "a": a, "b": b, "date": date} 
-
-    @staticmethod
-    def deserialize(data):
-        cls = {"torneo": Tournament, "partita": ChampionshipMatch}[data["type"]]
-        date = datetime.strptime(data["date"], "%d/%m/%Y") if "date" in data else None
-        return cls.get(data["a"], data["b"], date)
-
+        return super().exists(name)
 
 class Tournament(ABTTEvent):
     @staticmethod
@@ -125,3 +125,5 @@ class ChampionshipMatch(ABTTEvent):
     @staticmethod
     def getName(camp, inc):
         return f"partita-{camp}-{inc}"
+
+Base.metadata.create_all(engine)
