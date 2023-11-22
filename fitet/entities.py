@@ -1,10 +1,9 @@
 from datetime import datetime
 from abc import ABC, abstractmethod
-from sqlalchemy import ForeignKey, String, create_engine, select, or_
+from sqlalchemy import ForeignKey, String, create_engine, select, or_, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, relationship, mapped_column, sessionmaker, scoped_session
 from typing import Optional, List, Set, Tuple
 from sqlalchemy.pool import StaticPool
-from sqlalchemy import event
 from threading import Lock
 from icecream import ic
 
@@ -43,14 +42,22 @@ class Match(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     one_id: Mapped[int] = mapped_column(ForeignKey("player.id"), nullable=False)
     two_id: Mapped[int] = mapped_column(ForeignKey("player.id"), nullable=False)
-    score: Mapped[list[Tuple[int, int]]] = mapped_column(String(80), nullable=False)
+    _score: Mapped[str] = mapped_column(String(80), nullable=False)
     event_id: Mapped[int] = mapped_column(ForeignKey("event.id"), nullable=False)
     event: Mapped["TTEvent"] = relationship(back_populates="matches")
-    one: Mapped["Player"] = relationship("Player", foreign_keys=[one_id], overlaps="matches")
-    two: Mapped["Player"] = relationship("Player", foreign_keys=[two_id], overlaps="matches")
+    one: Mapped["Player"] = relationship("Player", foreign_keys=[one_id], overlaps="matches", cascade="merge")
+    two: Mapped["Player"] = relationship("Player", foreign_keys=[two_id], overlaps="matches", cascade="merge")
 
     def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"=None):
         super().__init__(one=one, two=two, score=score, event=event)
+
+    @property
+    def score(self):
+        return eval(self._score)# 😬😬😬😬
+
+    @score.setter
+    def score(self, value):
+        self._score = repr(value)
 
     def __repr__(self):
         return f"<Match {self.one} vs {self.two} {self.score}>"
@@ -70,7 +77,7 @@ class Match(Base):
             session.add_all(matches)
             session.commit()
             # wait for the transaction to be committed
-            matches[0].id
+            if len(matches): matches[0].id
 
 
 class TTEvent(Base):
@@ -141,27 +148,27 @@ class Persistency:
         self.Session = sessionmaker(self.engine)
         self.Session = scoped_session(self.Session)
 
-        #@event.listens_for(self.Session, 'before_flush')
+        @event.listens_for(self.Session, 'before_flush')
         def add_players_references(session, flush_context, instances):
             new_players: Dict[str, Player] = {}
-            for instance in session.new:
-                if isinstance(instance, Match):
-                    players = []
-                    for name in [instance.one.name, instance.two.name]:
-                        if name in new_players:
-                            player = new_players[name]
-                        else:
-                            stmt = select(Player).where(Player.name == name).limit(1)
-                            player = session.execute(stmt).first()
-                            if player is None:
-                                # cascade save-update
-                                player = Player(name)
-                            new_players[name] = player
-                        players.append(player)
-                    instance.one, instance.two = players
+            for instance in [ x for x in session.new if isinstance(x, Match) ]:
+                players = []
+                for name in [instance.one.name, instance.two.name]:
+                    if name in new_players:
+                        player = new_players[name]
+                    else:
+                        stmt = select(Player).where(Player.name == name).limit(1)
+                        player = session.scalar(stmt)
+                        if player is None:
+                            # cascade save-update
+                            player = Player(name)
+                            session.add(player)
+                        new_players[name] = player
+                    players.append(player)
+                instance.one, instance.two = players
 
     @property
-    def session(self):scoped_session
+    def session(self):
         return self.Session
 
     def get_all_matches(self):

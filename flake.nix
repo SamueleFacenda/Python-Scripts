@@ -2,7 +2,7 @@
   description = "An full-optional python flake template";
 
   # Nixpkgs / NixOS version to use.
-  inputs.nixpkgs.url = "nixpkgs/nixos-23.05";
+  inputs.nixpkgs.url = "nixpkgs/nixpkgs-unstable";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
