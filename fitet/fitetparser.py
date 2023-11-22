@@ -86,6 +86,8 @@ def make_match_from_girone_row(row):
     if one == '<?>' or two == '<?>':
         return None
 
+    one = one.title().strip()
+    two = two.title().strip()
     score = score.split(", ")
 
     if "assente" in score[0] or "ritirato" in score[0]:
@@ -99,10 +101,12 @@ def make_match_from_girone_row(row):
     return Match(Player(one), Player(two), score)
 
 def make_match_eliminatorie(cell_one, cell_two, result_cell):
-    one = parse_eliminatorie_cell(cell_one)[0]
-    two = parse_eliminatorie_cell(cell_two)[0]
+    one = parse_eliminatorie_cell(cell_one)[0].title().strip()
+    two = parse_eliminatorie_cell(cell_two)[0].title().strip()
 
     winner, score = parse_eliminatorie_cell(result_cell)
+
+    winner = winner.title().strip()
 
     other = two if winner == one else one
     return Match(Player(winner), Player(other), score)
@@ -112,8 +116,8 @@ def make_match_from_giornata_row(row):
     if not td[0].text.strip().isdigit():
         return None
 
-    one = td[1].text.strip()
-    two = td[2].text.strip()
+    one = td[1].text.strip().title()
+    two = td[2].text.strip().title()
     # for each set
     sets = []
     for i in range(5):
@@ -186,11 +190,11 @@ class FitetParser:
 
         self.matches = Match.get_all(self.persistency)
 
+        self.db_lock = Lock()
+
         # No lock for matches, list appends are thread-safe
 
-        self.all_events = set(self.persistency.get_all_event_names())
-
-        self.pool = WaitableThreadPool(10)
+        self.pool = WaitableThreadPool(4)
 
     def update(self, wanted_regions=None):
         self.add_all_new_matches(wanted_regions)
@@ -229,7 +233,8 @@ class FitetParser:
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
         for match in out: match.event = event
         
-        Match.persist_all(self.persistency, out)
+        with self.db_lock:
+            Match.persist_all(self.persistency, out)
         self.matches += out
 
     def add_campionato_matches(self, campionato, anno):
@@ -296,7 +301,8 @@ class FitetParser:
         
         for match in out: match.event = event
 
-        Match.persist_all(self.persistency, out)
+        with self.db_lock:
+            Match.persist_all(self.persistency, out)
         self.matches += out
 
     def add_tabellone_gironi(self, path, event):
@@ -309,5 +315,6 @@ class FitetParser:
         out = list(filter(None, out))
         for match in out: match.event = event
 
-        Match.persist_all(self.persistency, out)
+        with self.db_lock:
+            Match.persist_all(self.persistency, out)
         self.matches += out
