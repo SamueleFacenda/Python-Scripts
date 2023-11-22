@@ -17,4 +17,4 @@ some intresting ones:sunglasses::
 * fitet: take all the results from the result fitet portal (italian table-tennis)
 * prog: cpp files for the programmation1 course at unitn
 * codeforces: cp solves
-* wev_scripts: random python scripts for different web scarpings
+* web_scripts: random python scripts for different web scarpings

@@ -7,7 +7,7 @@ from icecream import ic
 import json
 from datetime import datetime
 
-from .entities import Match, Player, TTEvent, ChampionshipMatch, Tournament, update_persistency
+from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency
 from .threadutils import WaitableThreadPool
 
 
@@ -86,8 +86,6 @@ def make_match_from_girone_row(row):
     if one == '<?>' or two == '<?>':
         return None
 
-    one = Player.get(one)
-    two = Player.get(two)
     score = score.split(", ")
 
     if "assente" in score[0] or "ritirato" in score[0]:
@@ -98,19 +96,16 @@ def make_match_from_girone_row(row):
     else:
         score = [(int(s.split("-")[0]), int(s.split("-")[1])) for s in score]
 
-    return Match(one, two, score)
+    return Match(Player(one), Player(two), score)
 
 def make_match_eliminatorie(cell_one, cell_two, result_cell):
     one = parse_eliminatorie_cell(cell_one)[0]
     two = parse_eliminatorie_cell(cell_two)[0]
 
-    one = Player.get(one)
-    two = Player.get(two)
     winner, score = parse_eliminatorie_cell(result_cell)
 
-    winner = Player.get(winner)
     other = two if winner == one else one
-    return Match(winner, other, score)
+    return Match(Player(winner), Player(other), score)
 
 def make_match_from_giornata_row(row):
     td = row.find_all("td")
@@ -126,12 +121,9 @@ def make_match_from_giornata_row(row):
         points_two = td[4+i*2].text.strip()
         if points_one == "0" and points_two == "0":
             break
-        try:
-            sets.append((int(points_one), int(points_two)))
-        except ValueError:
-            ic(td)
-            raise
-    return Match(Player.get(one), Player.get(two), sets)
+        sets.append((int(points_one), int(points_two)))
+    
+    return Match(Player(one), Player(two), sets)
 
 
 ## Complex parsers ##
@@ -190,9 +182,13 @@ class FitetParser:
     def __init__(self, dump_path):
         self.matches_dump_path = dump_path
 
-        self.matches = Match.get_all()
+        self.persistency = Persistency(self.matches_dump_path)
+
+        self.matches = Match.get_all(self.persistency)
 
         # No lock for matches, list appends are thread-safe
+
+        self.all_events = set(self.persistency.get_all_event_names())
 
         self.pool = WaitableThreadPool(10)
 
@@ -215,18 +211,17 @@ class FitetParser:
         self.pool.wait_and_end()
 
     def add_matches_from_giornata(self, incontro, campionato):
-        if ChampionshipMatch.exists(campionato, incontro):
+        if ChampionshipMatch.exists(self.persistency, campionato, incontro):
             # already parsed
             return
-        event = ChampionshipMatch.get(campionato, incontro)
+        event = ChampionshipMatch.get_or_create(self.persistency, campionato, incontro)
 
         risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
         soup = BeautifulSoup(risultato, "html.parser")
 
         date = soup.find("b", string=re.compile("Giornata")).text
         date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
-        with update_persistency():
-            event.date = datetime.strptime(date, "%d/%m/%Y")
+        event.date = datetime.strptime(date, "%d/%m/%Y")
 
         # get the second div in body direct children of body
         div = soup.body.find_all("div", recursive=False)[1]
@@ -234,7 +229,7 @@ class FitetParser:
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
         for match in out: match.event = event
         
-        Match.persist_all(out)
+        Match.persist_all(self.persistency, out)
         self.matches += out
 
     def add_campionato_matches(self, campionato, anno):
@@ -252,10 +247,10 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
-        if Tournament.exists(id, reg):
+        if Tournament.exists(self.persistency, id, reg):
             # already parsed
             return
-        event = Tournament.get(id, reg)
+        event = Tournament.get_or_create(self.persistency, id, reg)
 
         date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
         event.date = datetime.strptime(date, "%d/%m/%Y")
@@ -301,7 +296,7 @@ class FitetParser:
         
         for match in out: match.event = event
 
-        Match.persist_all(out)
+        Match.persist_all(self.persistency, out)
         self.matches += out
 
     def add_tabellone_gironi(self, path, event):
@@ -314,5 +309,5 @@ class FitetParser:
         out = list(filter(None, out))
         for match in out: match.event = event
 
-        Match.persist_all(out)
+        Match.persist_all(self.persistency, out)
         self.matches += out

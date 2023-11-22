@@ -1,28 +1,14 @@
 from datetime import datetime
 from abc import ABC, abstractmethod
 from sqlalchemy import ForeignKey, String, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, relationship, mapped_column, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, relationship, mapped_column, sessionmaker, scoped_session
 from typing import Optional, List, Set, Tuple
+from sqlalchemy.pool import StaticPool
+from sqlalchemy import event
 
-engine = create_engine("sqlite://", echo=True)
-Session = sessionmaker(engine)
 
 class Base(DeclarativeBase):
     pass
-
-# decorator
-def add_to_session(func):
-    def wrapper(self, *args, **kwargs):
-        with Session.begin() as session:
-            out = func(self, *args, **kwargs)
-            session.add(self)
-            return out
-    return wrapper
-
-# to be used with "with" statement
-def update_persistency(func):
-    return Session.begin()
-
 
 class Player(Base):
     __tablename__ = "player"
@@ -30,17 +16,17 @@ class Player(Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     matches: Mapped[List["Match"]] = relationship(primaryjoin="or_(Player.id==Match.one_id, " "Player.id==Match.two_id)" , cascade="all, delete-orphan") 
 
-    # @add_to_session
     def __init__(self, name):
         super().__init__(name=name)
 
     @staticmethod
-    def get_or_create(name):
-        with Session.begin() as session:
-            player = session.query(Player).filter_by(name=name).first()
-            if player is None:
-                player = Player(name)
+    def get_or_create(persistency, name):
+        player = persistency.session.query(Player).filter_by(name=name).first()
+        if player is None:
+            player = Player(name)
+            with persistency.session() as session:
                 session.add(player)
+                session.commit()
         return player
 
     def __repr__(self):
@@ -54,23 +40,24 @@ class Match(Base):
     score: Mapped[list[Tuple[int, int]]] = mapped_column(String(80), nullable=False)
     event_id: Mapped[int] = mapped_column(ForeignKey("event.id"), nullable=False)
     event: Mapped["TTEvent"] = relationship(back_populates="matches")
+    one: Mapped["Player"] = relationship("Player", foreign_keys=[one_id], overlaps="matches")
+    two: Mapped["Player"] = relationship("Player", foreign_keys=[two_id], overlaps="matches")
 
-    # @add_to_session
-    def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"):
+    def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"=None):
         super().__init__(one=one, two=two, score=score, event=event)
 
     def __repr__(self):
         return f"<Match {self.one} vs {self.two} {self.score}>"
 
     @staticmethod
-    def get_all():
-        with Session() as session:
-            return session.query(Match).all()
+    def get_all(persistency):
+        return persistency.session.query(Match).all()
 
     @staticmethod
-    def persist_all(matches):
-        with Session.begin() as session:
+    def persist_all(persistency, matches):
+        with persistency.session() as session:
             session.add_all(matches)
+            session.commit()
 
 class TTEvent(Base):
     __tablename__ = "event"
@@ -79,18 +66,19 @@ class TTEvent(Base):
     date: Mapped[datetime | None]
     matches: Mapped[List["Match"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
-    # @add_to_session
     def __init__(self, name, date=None):
         super().__init__(name=name, date=date)
         
-    @classmethod
-    def get_or_create(cls, name, date=None):
-        with Session.begin() as session:
+    @staticmethod
+    def get_or_create(persistency, name, date=None):
+        with persistency.session() as session:
             event = session.query(TTEvent).filter_by(name=name).first()
-            if event is None:
-                event = cls(name=name, date=date)
+        if event is None:
+            event = TTEvent(name, date)
+            with persistency.session() as session:
                 session.add(event)
-            return event
+                session.commit()
+        return event
         
 
     @staticmethod
@@ -99,9 +87,8 @@ class TTEvent(Base):
         raise NotImplementedError
 
     @staticmethod
-    def exists(name):
-        with Session.begin() as session:
-            return session.query(TTEvent).filter_by(name=name).first() is not None
+    def exists(persistency, name):
+        persistency.session.query(TTEvent).filter_by(name=name).first() is not None
 
     def __repr__(self):
         return f"<TTEvent {self.name} {self.date}>"
@@ -109,14 +96,14 @@ class TTEvent(Base):
 
 class ABTTEvent(TTEvent):
     @classmethod
-    def get_or_create(cls, a, b, date=None):
+    def get_or_create(cls, persistency, a, b, date=None):
         name = cls.getName(a, b)
-        return super().get_or_create(name, date)
+        return super().get_or_create(persistency, name, date)
 
     @classmethod
-    def exists(cls, a, b):
+    def exists(cls, persistency, a, b):
         name = cls.getName(a, b)
-        return super().exists(name)
+        return super().exists(persistency, name)
 
 class Tournament(ABTTEvent):
     @staticmethod
@@ -128,4 +115,38 @@ class ChampionshipMatch(ABTTEvent):
     def getName(camp, inc):
         return f"partita-{camp}-{inc}"
 
-Base.metadata.create_all(engine)
+
+class Persistency:
+    def __init__(self, path):
+        self.engine = create_engine("sqlite://", echo=False, connect_args={'check_same_thread': False}, poolclass=StaticPool)
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(self.engine)
+        self.Session = scoped_session(self.Session)
+
+        @event.listens_for(self.Session, 'before_flush')
+        def add_players_references(session, flush_context, instances):
+            new_players: Dict[str, Player] = {}
+            for instance in session.new:
+                if isinstance(instance, Match):
+                    players = []
+                    for name in [instance.one.name, instance.two.name]:
+                        if name  in new_players:
+                            player = new_players[name]
+                        else:
+                            player = session.query(Player).filter_by(name=name).first()
+                            if player is None:
+                                player = Player(name)
+                                session.add(player)
+                            new_players[name] = player
+                        players.append(player)
+                    instance.one, instance.two = players
+
+    @property
+    def session(self):
+        return self.Session
+
+    def get_all_matches(self):
+        return Match.get_all(self)
+
+    def get_all_event_names(self):
+        return set(self.session.query(TTEvent).all())
