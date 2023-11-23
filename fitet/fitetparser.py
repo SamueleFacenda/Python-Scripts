@@ -10,6 +10,7 @@ from datetime import datetime
 from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency
 from .threadutils import WaitableThreadPool
 
+from sqlalchemy import inspect
 
 class Error404(Exception): pass
 
@@ -252,13 +253,14 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
+
+        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
+        date = datetime.strptime(date, "%d/%m/%Y")
+
         if Tournament.exists(self.persistency, id, reg):
             # already parsed
             return
-        event = Tournament.get_or_create(self.persistency, id, reg)
-
-        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        event.date = datetime.strptime(date, "%d/%m/%Y")
+        event = Tournament.get_or_create(self.persistency, id, reg, date)# TODO create only on match add, so they are transient here
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:

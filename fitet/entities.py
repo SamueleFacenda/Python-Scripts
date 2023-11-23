@@ -64,8 +64,8 @@ class Match(Base):
 
     @staticmethod
     def get_all(persistency):
-        with persistency.session() as session:
-            return session.query(Match).all()
+        with persistency.session.begin():
+            return persistency.session.query(Match).all()
 
     @staticmethod
     def persist_all(persistency, matches):
@@ -92,15 +92,15 @@ class TTEvent(Base):
         
     @staticmethod
     def get_or_create(persistency, name, date=None):
-        with persistency.session() as session:
+        with persistency.session.begin() as session:
             stmt = select(TTEvent).where(TTEvent.name == name).limit(1)
-            event = session.scalar(stmt)
+            event = persistency.session.scalar(stmt)
 
         if event is None:
             event = TTEvent(name, date)
-            with persistency.session() as session:
-                session.add(event)
-                session.commit()
+            with persistency.session.begin():
+                persistency.session.add(event)
+                persistency.session.commit()
         return event
         
 
@@ -111,9 +111,9 @@ class TTEvent(Base):
 
     @staticmethod
     def exists(persistency, name):
-        with persistency.session() as session:
+        with persistency.session.begin() as session:
             stmt = select(TTEvent).where(TTEvent.name == name).limit(1)
-            return session.execute(stmt).first() is not None
+            return persistency.session.execute(stmt).first() is not None
 
 
     def __repr__(self):
@@ -145,7 +145,7 @@ class Persistency:
     def __init__(self, path):
         self.engine = create_engine("sqlite://", echo=False, connect_args={'check_same_thread': False}, poolclass=StaticPool)
         Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(self.engine)
+        self.Session = sessionmaker(self.engine, autobegin=False)
         self.Session = scoped_session(self.Session)
 
         @event.listens_for(self.Session, 'before_flush')
