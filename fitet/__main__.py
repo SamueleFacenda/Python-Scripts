@@ -15,7 +15,7 @@ def main():
     print(len(parser.matches))
     
     for player in search_players:
-        matches = Player.get_or_create(player, parser,persistency.session).matches
+        matches = Player.get_player_matches(parser.persistency, player)
         print()
         print('#'*(len(player)+6))
         print('##' ,player, '##')

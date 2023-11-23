@@ -189,13 +189,14 @@ class FitetParser:
 
         self.persistency = Persistency(self.matches_dump_path)
 
-        self.matches = Match.get_all(self.persistency)
+        # No lock for matches, list appends are thread-safe
+        self.matches = Match.get_all(self.persistency)# TODO use property for query db
+
+        self._already_parsed_events_names: set[str] = set()
 
         self.db_lock = Lock()
 
-        # No lock for matches, list appends are thread-safe
-
-        self.pool = WaitableThreadPool(4)
+        self.pool = WaitableThreadPool(10)
 
     def update(self, wanted_regions=None):
         self.add_all_new_matches(wanted_regions)
@@ -216,10 +217,10 @@ class FitetParser:
         self.pool.wait_and_end()
 
     def add_matches_from_giornata(self, incontro, campionato):
-        if ChampionshipMatch.exists(self.persistency, campionato, incontro):
-            # already parsed
+        event = ChampionshipMatch(campionato, incontro)
+        if event.name in self._already_parsed_events_names:
             return
-        event = ChampionshipMatch.get_or_create(self.persistency, campionato, incontro)
+        self._already_parsed_events_names.add(event.name)
 
         risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
         soup = BeautifulSoup(risultato, "html.parser")
@@ -253,14 +254,13 @@ class FitetParser:
         self.pool.map_async(partial(self.add_campionato_matches, anno=anno), campionati)
 
     def add_torneo_matches(self, name, id, reg):
-
-        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
-        date = datetime.strptime(date, "%d/%m/%Y")
-
-        if Tournament.exists(self.persistency, id, reg):
-            # already parsed
+        event = Tournament(id, reg)
+        if event.name in self._already_parsed_events_names:
             return
-        event = Tournament.get_or_create(self.persistency, id, reg, date)# TODO create only on match add, so they are transient here
+        self._already_parsed_events_names.add(event.name)
+        
+        date = re.search(r"\d{2}/\d{2}/\d{4}", name).group(0)
+        event.date = datetime.strptime(date, "%d/%m/%Y")
 
         tabelloni = fetch_tabelloni(id, reg)
         if tabelloni is None:
