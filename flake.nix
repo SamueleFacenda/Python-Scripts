@@ -24,18 +24,20 @@
       let pkgs = (nixpkgs.legacyPackages.${system}.extend overlay); in
       {
 
-        packages = {
+        packages = rec {
+            default = fitet-parser;
             fitet-parser = pkgs.python3.pkgs.buildPythonApplication {
               pname = "fitet-parser";
               src = ./.;
               inherit version;
               pyproject = true;
-              format = "pyproject";
+              #format = "pyproject";
 
               propagatedBuildInputs = with pkgs.python3.pkgs; [
                 beautifulsoup4
                 requests
                 icecream
+                sqlalchemy
               ];
 
               nativeBuildInputs = with pkgs; [
@@ -44,13 +46,11 @@
 
             };
           };
-
-        defaultPackage = self.packages.${system}.fitet-parser;
-
+          
         apps = {
             default = {
               type = "app";
-              program = "${self.defaultPackage.${system}}/bin/fitet-runner";
+              program = "${self.packages.${system}.default}/bin/fitet-runner";
             };
           };
 

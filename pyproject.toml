@@ -15,6 +15,7 @@ dependencies = [
    "requests",
    "beautifulsoup4",
    "icecream",
+   "sqlalchemy",
 ]
 
 [project.scripts]
