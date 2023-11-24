@@ -1,26 +1,24 @@
 from . import FitetParser, Player
+from argparse import ArgumentParser
 import sys
 
 def main():
-    dump_path = "fitet/matches.json"
+    parser = ArgumentParser()
+    parser.add_argument('--dump-path', '-d',type=str, default="db.sqlite3", dest="dump_path", help="Path to the sqlite3 dump")
+    parser.add_argument('--region', '-r', action='append', dest="regions", help="Regions to search for", default=["Trentino"])
+    parser.add_argument('--update', '-u', action='store_true', dest="update", help="Update the database")
+    parser.add_argument('players', type=str, nargs='*', help="Players to search for")
+
+    args = parser.parse_args()
         
-    search_players = [x for x in sys.argv[1:] if '--dump-path=' not in x]
-    dump_list = [x for x in sys.argv[1:] if '--dump-path=' in x]
-    if dump_list:
-        dump_path = dump_list[0].split('=')[1]
-    
-        
-    parser = FitetParser(dump_path)
-    parser.update(["Trentino"])
+    parser = FitetParser(args.dump_path)
+    if args.update:
+        parser.update(args.regions)
     print(len(parser.matches))
     
-    for player in search_players:
-        matches = Player.get(parser.persistency, player).matches
-        print()
-        print('#'*(len(player)+6))
-        print('##' ,player, '##')
-        print('#'*(len(player)+6))
-        print('\n'.join([str(x) for x in matches]))
+    for player in args.players:
+        player = Player.get(parser.persistency, player)
+        print(player.pretty_str())
         
         
         

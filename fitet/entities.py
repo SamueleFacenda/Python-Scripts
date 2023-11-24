@@ -23,9 +23,8 @@ class Player(Base):
 
     @staticmethod
     def get(persistency, name):
-        with persistency.session.begin():
-            stmt = select(Player).where(Player.name == name).limit(1)
-            player = persistency.session.scalar(stmt)
+        stmt = select(Player).where(Player.name == name).limit(1)
+        player = persistency.session.scalar(stmt)
         if player is None:
             raise ValueError(f"Player {name} not found")
         return player
@@ -33,6 +32,13 @@ class Player(Base):
     def __repr__(self):
         return f"<Player {self.name}>"
 
+    def pretty_str(self)->str:
+        out = '#'*(len(self.name)+6) + '\n'
+        out += '## ' + self.name + ' ##\n'
+        out += '#'*(len(self.name)+6) + '\n'
+        out += '\n'.join([str(x) for x in self.matches])
+        out += '\n'
+        return out
 class Match(Base):
     __tablename__ = "match"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -90,7 +96,7 @@ class TTEvent(Base):
         
     @staticmethod
     @abstractmethod
-    def getName(a, b):
+    def get_name(a, b):
         raise NotImplementedError
 
     def __repr__(self):
@@ -105,16 +111,16 @@ class TTEvent(Base):
 
 class ABTTEvent(TTEvent):
     def __init__(self, a, b, date=None):
-        super().__init__(self.getName(a, b), date)
+        super().__init__(self.get_name(a, b), date)
 
 class Tournament(ABTTEvent):
     @staticmethod
-    def getName(id, reg):
+    def get_name(id, reg):
         return f"torneo-{id}-{reg}"
 
 class ChampionshipMatch(ABTTEvent):
     @staticmethod
-    def getName(camp, inc):
+    def get_name(camp, inc):
         return f"partita-{camp}-{inc}"
 
 def find_or_create_by_name(session, name, Obj_class, cached_results, **kwargs):
@@ -146,7 +152,7 @@ class Persistency:
             # use references to players instead of creating new ones
             new_players: Dict[str, Player] = {}
             new_events: Dict[str, TTEvent] = {}
-            for instance in [ x for x in session.new if isinstance(x, Match) ]:
+            for instance in [x for x in session.new if isinstance(x, Match)]:
                 instance.one = find_or_create_by_name(session, instance.one.name, Player, new_players)
                 instance.two = find_or_create_by_name(session, instance.two.name, Player, new_players)
                 instance.event = find_or_create_by_name(session, instance.event.name, TTEvent, new_events, date=instance.event.date)
