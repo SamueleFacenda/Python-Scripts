@@ -8,11 +8,12 @@ def main():
     parser.add_argument('--region', '-r', action='append', dest="regions", help="Regions to search for", default=["Trentino"])
     parser.add_argument('--update', '-u', action='store_true', dest="update", help="Update the database")
     parser.add_argument('--query', '-q', action='append', dest="queries", default=[], help="Players to search for")
+    parser.add_argument('--verbose', '-v', action='store_true', dest="verbose", help="Verbose")
     parser.add_argument('players', type=str, nargs='*', help="Players to search for")
 
     args = parser.parse_args()
         
-    parser = FitetParser(args.dump_path)
+    parser = FitetParser(args.dump_path, verbose=args.verbose)
     if args.update:
         parser.update(args.regions)
 

@@ -190,10 +190,10 @@ class FakeLock:
 
 class FitetParser:
 
-    def __init__(self, dump_path):
+    def __init__(self, dump_path=None, verbose=False):
         self.matches_dump_path = dump_path
 
-        self.persistency = Persistency(self.matches_dump_path)
+        self.persistency = Persistency(self.matches_dump_path, verbose=verbose)
 
         self._already_parsed_events_names = TTEvent.get_all_names(self.persistency)
 

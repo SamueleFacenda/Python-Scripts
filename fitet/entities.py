@@ -46,6 +46,7 @@ class Match(Base):
     two_id: Mapped[int] = mapped_column(ForeignKey("player.id"))
     _score: Mapped[str] = mapped_column(String(80))
     event_id: Mapped[int] = mapped_column(ForeignKey("event.id"))
+    # N.B. no cascade save-update, it will break the uniqueness of the name, I do it by hand in a event listener
     event: Mapped["TTEvent"] = relationship(back_populates="matches", cascade="merge", lazy='joined')
     one: Mapped[Player] = relationship(foreign_keys=[one_id], cascade="merge", lazy='joined')
     two: Mapped[Player] = relationship(foreign_keys=[two_id], cascade="merge", lazy='joined')
@@ -69,8 +70,7 @@ class Match(Base):
 
     @staticmethod
     def get_all(persistency):
-        with persistency.session.begin():
-            return persistency.session.query(Match).all()
+        return persistency.session.scalars(select(Match)).all()
 
     @staticmethod
     def persist_all(persistency, matches):
@@ -84,7 +84,7 @@ class TTEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     date: Mapped[datetime | None]
-    matches: Mapped[List["Match"]] = relationship(back_populates="event", cascade="merge, delete, expunge, delete-orphan")
+    matches: Mapped[List[Match]] = relationship(back_populates="event", cascade="merge, delete, expunge, delete-orphan")
 
     def __init__(self, name, date=None):
         super().__init__(name=name, date=date)
@@ -136,11 +136,12 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 class Persistency:
-    def __init__(self, path):
+    def __init__(self, path=None, verbose=False):
         if path:
-            self.engine = create_engine(f"sqlite:///{path}", echo=False)
+            self.engine = create_engine(f"sqlite:///{path}", echo=verbose)
         else:
-            self.engine = create_engine('sqlite://', echo=False, connect_args={'check_same_thread': False}, poolclass=StaticPool)
+            # settings needed for sqlite in memory
+            self.engine = create_engine('sqlite://', echo=verbose, connect_args={'check_same_thread': False}, poolclass=StaticPool)
         
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(self.engine, autobegin=True)
