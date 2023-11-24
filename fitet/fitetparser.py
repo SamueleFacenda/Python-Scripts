@@ -179,6 +179,12 @@ def parse_eliminatorie_score(score):
     return [(max(11,abs(x)+2), abs(x))[::(1 if x >= 0 else -1)] for x in sets]
 
 
+class FakeLock:
+    def __enter__(self):
+        pass
+    def __exit__(self, *args):
+        pass
+
 
 ## Container class for parsing ##
 

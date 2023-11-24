@@ -47,10 +47,10 @@ class Match(Base):
     _score: Mapped[str] = mapped_column(String(80))
     event_id: Mapped[int] = mapped_column(ForeignKey("event.id"))
     event: Mapped["TTEvent"] = relationship(back_populates="matches", cascade="merge", lazy='joined')
-    one: Mapped["Player"] = relationship("Player", foreign_keys=[one_id], cascade="merge", lazy='joined')
-    two: Mapped["Player"] = relationship("Player", foreign_keys=[two_id], cascade="merge", lazy='joined')
+    one: Mapped[Player] = relationship(foreign_keys=[one_id], cascade="merge", lazy='joined')
+    two: Mapped[Player] = relationship(foreign_keys=[two_id], cascade="merge", lazy='joined')
 
-    def __init__(self, one: "Player", two: "Player", score: list[Tuple[int, int]], event: "TTEvent"=None):
+    def __init__(self, one: Player, two: Player, score: list[Tuple[int, int]], event: "TTEvent"=None):
         super().__init__(one=one, two=two, score=score, event=event)
 
     @property
@@ -74,14 +74,8 @@ class Match(Base):
 
     @staticmethod
     def persist_all(persistency, matches):
-        # check if type is correct
-        for match in matches:
-            if not isinstance(match, Match):
-                raise TypeError(f"Expected Match, got {type(match)}, {match=}")
         with persistency.session.begin():
             persistency.session.add_all(matches)
-            # wait for the transaction to be committed
-            if len(matches): matches[0].id
 
 
 class TTEvent(Base):
@@ -142,7 +136,11 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 class Persistency:
     def __init__(self, path):
-        self.engine = create_engine(f"sqlite:///{path}", echo=False)
+        if path:
+            self.engine = create_engine(f"sqlite:///{path}", echo=False)
+        else:
+            self.engine = create_engine('sqlite://', echo=False, connect_args={'check_same_thread': False}, poolclass=StaticPool)
+        
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(self.engine, autobegin=True)
         self.Session = scoped_session(self.Session)
