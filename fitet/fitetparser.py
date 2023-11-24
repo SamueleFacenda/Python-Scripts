@@ -195,11 +195,7 @@ class FitetParser:
 
         self.persistency = Persistency(self.matches_dump_path)
 
-        # No lock for matches, list appends are thread-safe
-
         self._already_parsed_events_names = TTEvent.get_all_names(self.persistency)
-
-        self.db_lock = Lock()
 
         self.pool = WaitableThreadPool(10)
 
@@ -244,8 +240,7 @@ class FitetParser:
         out = list(filter(None, [make_match_from_giornata_row(row) for row in rows]))
         for match in out: match.event = event
         
-        with self.db_lock:
-            Match.persist_all(self.persistency, out)
+        Match.persist_all(self.persistency, out)
 
     def add_campionato_matches(self, campionato, anno):
         incontri  = fetch_giornate(campionato, anno)
@@ -311,8 +306,7 @@ class FitetParser:
         
         for match in out: match.event = event
 
-        with self.db_lock:
-            Match.persist_all(self.persistency, out)
+        Match.persist_all(self.persistency, out)
 
     def add_tabellone_gironi(self, path, event):
         tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
@@ -324,5 +318,4 @@ class FitetParser:
         out = list(filter(None, out))
         for match in out: match.event = event
 
-        with self.db_lock:
-            Match.persist_all(self.persistency, out)
+        Match.persist_all(self.persistency, out)

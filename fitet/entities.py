@@ -74,8 +74,9 @@ class Match(Base):
 
     @staticmethod
     def persist_all(persistency, matches):
-        with persistency.session.begin():
-            persistency.session.add_all(matches)
+        with persistency.lock:
+            with persistency.session.begin():
+                persistency.session.add_all(matches)
 
 
 class TTEvent(Base):
@@ -144,6 +145,8 @@ class Persistency:
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(self.engine, autobegin=True)
         self.Session = scoped_session(self.Session)
+
+        self.lock = Lock()
 
         @event.listens_for(self.Session, 'before_flush')
         def add_players_references(session, flush_context, instances):
