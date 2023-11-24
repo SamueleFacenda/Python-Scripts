@@ -7,7 +7,7 @@ from icecream import ic
 import json
 from datetime import datetime
 
-from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency
+from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency, TTEvent
 from .threadutils import WaitableThreadPool
 
 from sqlalchemy import inspect
@@ -192,7 +192,7 @@ class FitetParser:
         # No lock for matches, list appends are thread-safe
         self.matches = Match.get_all(self.persistency)# TODO use property for query db
 
-        self._already_parsed_events_names: set[str] = set()
+        self._already_parsed_events_names = TTEvent.get_all_names(self.persistency)
 
         self.db_lock = Lock()
 
