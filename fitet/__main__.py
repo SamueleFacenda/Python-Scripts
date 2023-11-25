@@ -1,6 +1,5 @@
 from . import FitetParser, Player
 from argparse import ArgumentParser
-import sys
 
 def main():
     parser = ArgumentParser()

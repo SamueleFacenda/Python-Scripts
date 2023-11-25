@@ -12,14 +12,15 @@ from .caching import cached
 
 from sqlalchemy import inspect
 
-class Error404(Exception): pass
+class Error404(Exception): 
+    pass
 
 URL = "https://portale.fitet.org/"
 
 
 ### Urls fetchers ###
 
-def make_soup_res(path, params):
+def make_soup_res(path, params={}):
     req = r.get(URL + path, params=params)
     if req.status_code == 404:
         raise Error404()
@@ -226,8 +227,7 @@ class FitetParser:
             return
         self._already_parsed_events_names.add(event.name)
 
-        risultato = r.get(URL + "risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1}).text
-        soup = BeautifulSoup(risultato, "html.parser")
+        soup = make_soup_res("risultati/campionati/giornata.php", params={"CAM": campionato, "INCONTRO": incontro, "FORMULA": 1})
 
         date = soup.find("b", string=re.compile("Giornata")).text
         date = re.search(r"\d{2}/\d{2}/\d{4}", date).group(0)
@@ -292,8 +292,7 @@ class FitetParser:
             print("Path", path)
 
     def add_tabellone_eliminatorie(self, path, event):
-        tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
-        soup = BeautifulSoup(tab, "html.parser")
+        soup = make_soup_res("risultati/tornei/tabelloni/" + path)
         tr = soup.find_all("tr")
         if soup.find("i"):
             # i is intestation text for the two tables
@@ -308,8 +307,7 @@ class FitetParser:
         Match.persist_all(self.persistency, out)
 
     def add_tabellone_gironi(self, path, event):
-        tab = r.get(URL + "risultati/tornei/tabelloni/" + path).text
-        soup = BeautifulSoup(tab, "html.parser")
+        soup = make_soup_res("risultati/tornei/tabelloni/" + path)
         # get all tr withoud bgcolor
         trs = soup.find_all("tr", {"bgcolor": None})
         out = [make_match_from_girone_row(tr) for tr in trs]

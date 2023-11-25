@@ -5,33 +5,17 @@ import atexit
 import functools
 import time
 
-class Singleton:
-    _instance = None
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-class ExitRoutine(Singleton):
-    def __init__(self):
-        self.todo = []
-        # atexit.register(self.run)
-
-    def add(self, func):
-        self.todo.append(func)
-
-    def run(self):
-        for func in self.todo:
-            func()
-
 class Cache():
     def __init__(self, name):
         self.path = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'tt')
         os.makedirs(self.path, exist_ok=True)
         self.path = os.path.join(self.path, name)
 
-        last_modified = os.path.getmtime(self.path) if os.path.exists(self.path) else 0
+        if os.path.exists(self.path):
+            last_modified = os.path.getmtime(self.path)
+        else:
+            last_modified = 0
+
         ONE_WEEK = 60*60*24*7
         if time.time() - last_modified < ONE_WEEK:
             self.cache = pickle.load(open(self.path, 'rb'))
@@ -73,12 +57,11 @@ class cached:
         self.func = func
         self.cache = Cache(func.__name__)
 
-    @staticmethod
-    def args_to_kwargs(func, args):
-        return dict(zip(func.__code__.co_varnames, args))
+    def args_to_kwargs(self, args):
+        return dict(zip(self.func.__code__.co_varnames, args))
 
     def _get_key(self, args, kwargs):
-        return str({**cached.args_to_kwargs(self.func, args), **kwargs})
+        return str({**self.args_to_kwargs(args), **kwargs})
 
     def __call__(self, *args, **kwargs):
             key = self._get_key(args, kwargs)
