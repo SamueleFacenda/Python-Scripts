@@ -1,7 +1,6 @@
 import requests as r
 from bs4 import BeautifulSoup
 import re
-from threading import Lock
 from functools import partial
 from icecream import ic
 import json
@@ -9,6 +8,7 @@ from datetime import datetime
 
 from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency, TTEvent
 from .threadutils import WaitableThreadPool
+from .caching import cached
 
 from sqlalchemy import inspect
 
@@ -29,6 +29,7 @@ def parse_url(url):
     params = url.split("?")[-1].split("&")
     return {param.split("=")[0] : param.split("=")[1] for param in params}
 
+@cached
 def fetch_regioni():
     menu = r.get(URL + "menu.php").text
     soup = BeautifulSoup(menu, "html.parser")
@@ -44,16 +45,20 @@ def get_results_urls_parsed(path, params={}, parse=True):
     soup = make_soup_res("risultati/" + path, params)
     urls = soup.find_all("a")
     return {url.text : parse_url(url["href"]) if parse else url["href"] for url in urls}
-    
+
+@cached   
 def fetch_campionati(region):
     return get_results_urls_parsed("regioni/menu_reg.php", {"REG": region}) # "CAM"
 
+@cached
 def fetch_tornei_types(region):
     return get_results_urls_parsed("regioni/menu_tor.php", {"REG": region}) # "TOR"
 
+@cached
 def fetch_tornei(tor_type, region):
     return get_results_urls_parsed("tornei/elenco_tornei.php", {"TOR": tor_type, "COMIT": region, "ID": 0}) # "IDT" "TIPO"
 
+# do not cache this, it is uploaded after the tournament
 def fetch_tabelloni(torneo, region):
     try:
         return get_results_urls_parsed(f"tornei/tabelloni/{torneo}_{region}_home.html", parse=False)
@@ -61,11 +66,13 @@ def fetch_tabelloni(torneo, region):
         # not played yet
         return None
 
+@cached
 def fetch_anno_campionato(campionato):
     header = r.get(URL + "risultati/campionati/testa_campionati.php", params={"CAM": campionato}).text
     soup = BeautifulSoup(header, "html.parser")
     return parse_url(soup.find("a")["href"])["ANNO"]
 
+# do not cache this, it is updated after a championship match is played
 def fetch_giornate(campionato, anno):
     calendar = r.get(URL + "risultati/campionati/Calendario.asp", params={"CAM": campionato, "ANNO": anno}).text
     soup = BeautifulSoup(calendar, "html.parser")
@@ -177,14 +184,6 @@ def parse_eliminatorie_score(score):
 
     # reverse the tuple if the score is negative
     return [(max(11,abs(x)+2), abs(x))[::(1 if x >= 0 else -1)] for x in sets]
-
-
-class FakeLock:
-    def __enter__(self):
-        pass
-    def __exit__(self, *args):
-        pass
-
 
 ## Container class for parsing ##
 
