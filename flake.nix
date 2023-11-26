@@ -57,7 +57,7 @@
         devShells = {
           default = pkgs.mkShell {
             packages = with pkgs; [
-
+              php
               (python3.withPackages (ps: with ps; [
                 beautifulsoup4
                 requests

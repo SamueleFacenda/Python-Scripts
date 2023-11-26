@@ -1,7 +1,9 @@
 <?php
 
 include_once 'parser.php';
-
+$href = urldecode($href);
+$url = "../../proxy.php?url=$href";
+$url = urlencode($url);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -36,6 +38,7 @@ function updateIframe() {
 }
 </script>
     <!-- preview the pdf in $href -->
+    <!--
     <object data="<?php echo $href; ?>" type="application/pdf" width="100%" height="100%">
         <iframe src="https://drive.google.com/viewerng/viewer?embedded=true&url=<?= $href ?>" 
             id="iframepdf" onload="iframeLoaded()" onerror="updateIframe()"
@@ -43,10 +46,13 @@ function updateIframe() {
             <h1>click <a href="<?php echo $href; ?>">here</a> to view the file</h1>
         </iframe>
     </object>
+-->
+    <iframe title="PDF" src="pdfjs/web/viewer.html?file=<?= $url ?>" width="100%"
+    height="100%"></iframe>
 <script>
-interval = setInterval(function() {
-    updateIframe();
-}, 1000 * 3);
+//interval = setInterval(function() {
+//    updateIframe();
+//}, 1000 * 3);
 
 
 </script>

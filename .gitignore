@@ -8,3 +8,4 @@ __pycache__
 /tpsit/data/
 .direnv
 .vscode
+/univr-scraper/pdfjs
