@@ -2,6 +2,7 @@
 
 include_once 'parser.php';
 $href = urldecode($href);
+// dumb cors security bypass
 $url = "../../proxy.php?url=$href";
 $url = urlencode($url);
 ?>
