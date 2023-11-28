@@ -23,6 +23,7 @@ void readIntToQueue(char* name) {
         if (!in.fail())
             pila_push(tmp);
     }
+    in.close();
 }
 
 void putQueueInFile(char* name) {
@@ -39,6 +40,7 @@ void putQueueInFile(char* name) {
         out << tmp << endl;
     } while(pila_pop());
     pila_deinit();
+    out.close();
 }
 
 bool areBalanced(char* in) {
@@ -74,18 +76,23 @@ void invertiPila() {
     coda_deinit();
 }
 
-signed main(int argc, char** argv) {
-    checkArgs(2,argc);
-    readIntToQueue(argv[1]);
-    invertiPila();
-    putQueueInFile(argv[2]);
-    
+bool isPalindroma(char* str) {
+    coda_init();
+    pila_init();
+    for(int i=0; str[i]; i++) {
+        coda_enqueue(str[i]);
+        pila_push(str[i]);
+    }
+    int a,b;
+    while (coda_first(a) && pila_top(b) && a==b && coda_dequeue() && pila_pop());
+    coda_deinit();
+    pila_deinit();
+    // true if the end was reached
+    return !pila_top(a);
 }
 
-
-void checkArgs(int req, int argc) {
-    if (req != argc-1) {
-        cout << "Error arguments, expected "<<req<<", got "<<argc-1<<endl;
-        exit(1);
-    }
+signed main(int argc, char** argv) {
+    char* str = new char[100];
+    cin >> str;
+    cout << isPalindroma(str) << endl;
 }
