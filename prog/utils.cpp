@@ -18,7 +18,6 @@ void decrypt(char* word, int key) {
 }
 
 void extend(char* &arr, int &len) {
-    // pointer to an array of poiters
     char *out = new char[len*2];
     for(int i=0; i<len; i++)
         out[i] = arr[i];
@@ -27,6 +26,17 @@ void extend(char* &arr, int &len) {
     delete[] arr;
     arr = out;
 }
+
+void extend(int* &arr, int &len) {
+    int *out = new int[len*2];
+    for(int i=0; i<len; i++)
+        out[i] = arr[i];
+        
+    len *= 2;
+    delete[] arr;
+    arr = out;
+}
+
 
 char* readFile(char* name) {
     fstream in;
