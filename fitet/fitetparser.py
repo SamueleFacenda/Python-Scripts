@@ -5,6 +5,7 @@ from functools import partial
 from icecream import ic
 import json
 from datetime import datetime
+from functools import lru_cache
 
 from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency, TTEvent
 from .threadutils import WaitableThreadPool
@@ -30,15 +31,23 @@ def parse_url(url):
     params = url.split("?")[-1].split("&")
     return {param.split("=")[0] : param.split("=")[1] for param in params}
 
-@cached
-def fetch_regioni():
-    menu = r.get(URL + "menu.php").text
-    soup = BeautifulSoup(menu, "html.parser")
+def fetch_homepage():
+    soup = make_soup_res("menu.php")
     tables = soup.find_all("table")
     cambionati = tables[1]
     manifestazioni = tables[3]
     classifiche = tables[5]
     regioni = tables[7]
+    return {
+        "campionati" : cambionati,
+        "manifestazioni" : manifestazioni,
+        "classifiche" : classifiche,
+        "regioni" : regioni
+    }
+
+@cached
+def fetch_regioni():
+    regioni = fetch_homepage()["regioni"]
     regioni = regioni.find_all("a")
     return {rg.text : parse_url(rg["href"]) for rg in regioni} # "REG"
 
@@ -82,8 +91,48 @@ def fetch_giornate(campionato, anno):
 
     return [parse_url(inc["href"]) for inc in incontri] # INCONTRO CAM FORMULA
 
+# IMPORTANT: this is cached, but the cache is cleared every run
+@lru_cache(maxsize=1)
+def fetch_last_classifica():
+    classifiche = fetch_homepage()["classifiche"]
+    # must contain a date
+    latest = classifiche.find("a", string=re.compile(r"\d{2}/\d{2}/\d{4}"))
+    out = parse_url(latest["href"])
+    out["date"] = datetime.strptime(latest.text, "%d/%m/%Y")
+    return out# "ID_CLASS" "ID" "PASS" "date"
+
+@cached
+def fetch_player_id(name, classifica=211):
+    name = name.lower().strip()
+    res = r.get(URL + "risultati/new_rank/ajax.php", params={"term": name}, headers={"X-Requested-With": "XMLHttpRequest"})
+    res = res.json()
+    # some players are two times in the database
+    ids = [x["id"] for x in res]
+    for id in ids:
+        if validate_player_id(id, classifica):
+            return id
+    raise ValueError(f"Player {name} not found")
+
+NO_ATLETA_STR = "Non sono presenti dettagli per questo atleta in questa classifica!"
+@cached
+def validate_player_id(id, classifica=211):
+    res = r.get(URL + "risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}).text
+    return NO_ATLETA_STR not in res
+
+@cached
+def fetch_player_score(id, classifica):
+    soup = make_soup_res("risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0})
+    # the only p tag with class "classifica"
+    ic(soup.find("p", {"class": "classifica"}))
+    return int(soup.find("p", {"class": "classifica"}).text)
 
 ## Match parsers ##
+
+def make_player(name):
+    classifica = fetch_last_classifica()["ID_CLASS"]
+    id = fetch_player_id(name, classifica)
+    score = fetch_player_score(id, classifica)
+    return Player(name, id, score)
 
 def make_match_from_girone_row(row):
     tds = row.find_all("td")
@@ -107,7 +156,7 @@ def make_match_from_girone_row(row):
     else:
         score = [(int(s.split("-")[0]), int(s.split("-")[1])) for s in score]
 
-    return Match(Player(one), Player(two), score)
+    return Match(make_player(one), make_player(two), score)
 
 def make_match_eliminatorie(cell_one, cell_two, result_cell):
     one = parse_eliminatorie_cell(cell_one)[0].title().strip()
@@ -118,7 +167,7 @@ def make_match_eliminatorie(cell_one, cell_two, result_cell):
     winner = winner.title().strip()
 
     other = two if winner == one else one
-    return Match(Player(winner), Player(other), score)
+    return Match(make_player(winner), make_player(other), score)
 
 def make_match_from_giornata_row(row):
     td = row.find_all("td")
@@ -136,7 +185,7 @@ def make_match_from_giornata_row(row):
             break
         sets.append((int(points_one), int(points_two)))
     
-    return Match(Player(one), Player(two), sets)
+    return Match(make_player(one), make_player(two), sets)
 
 
 ## Complex parsers ##

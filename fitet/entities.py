@@ -15,11 +15,12 @@ class Player(Base):
     __tablename__ = "player"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    score: Mapped[int | None] = mapped_column()
     # TODO think about lazy='selectin'
     matches: Mapped[List["Match"]] = relationship(primaryjoin="or_(Player.id==Match.one_id, Player.id==Match.two_id)" , cascade="merge, delete, expunge, delete-orphan", lazy='select', viewonly=True) 
 
-    def __init__(self, name):
-        super().__init__(name=name)
+    def __init__(self, name, score=None):
+        super().__init__(name=name, score=score)
 
     @staticmethod
     def get(persistency, name):
