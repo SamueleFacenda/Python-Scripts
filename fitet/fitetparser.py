@@ -21,8 +21,8 @@ URL = "https://portale.fitet.org/"
 
 ### Urls fetchers ###
 
-def make_soup_res(path, params={}):
-    req = r.get(URL + path, params=params)
+def make_soup_res(path, params={}, headers={}):
+    req = r.get(URL + path, params=params, headers=headers)
     if req.status_code == 404:
         raise Error404()
     return BeautifulSoup(req.text, "html.parser")
@@ -121,10 +121,13 @@ def validate_player_id(id, classifica=211):
 
 @cached
 def fetch_player_score(id, classifica):
-    soup = make_soup_res("risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0})
+    soup = make_soup_res("risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}, headers={"X-Requested-With": "XMLHttpRequest"})
     # the only p tag with class "classifica"
-    ic(soup.find("p", {"class": "classifica"}))
-    return int(soup.find("p", {"class": "classifica"}).text)
+    try:
+        return int(soup.find("p", {"class": "classifica"}).text)
+    except:
+        ic(id, classifica, soup)
+        raise
 
 ## Match parsers ##
 
@@ -132,7 +135,7 @@ def make_player(name):
     classifica = fetch_last_classifica()["ID_CLASS"]
     id = fetch_player_id(name, classifica)
     score = fetch_player_score(id, classifica)
-    return Player(name, id, score)
+    return Player(name, score)
 
 def make_match_from_girone_row(row):
     tds = row.find_all("td")
