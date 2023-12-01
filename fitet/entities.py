@@ -31,15 +31,19 @@ class Player(Base):
         return player
 
     def __repr__(self):
-        return f"<Player {self.name}>"
+        return f"<Player {self.name} ({self.score})>"
 
     def pretty_str(self)->str:
-        out = '#'*(len(self.name)+6) + '\n'
-        out += '## ' + self.name + ' ##\n'
-        out += '#'*(len(self.name)+6) + '\n'
+        score = str(self.score) if self.score is not None else 'N/A'
+        width = len(self.name) + 6
+        out = '#'*width + '\n'
+        out += f"## {self.name} ##\n"
+        out += f"## {score}p{' '*(len(self.name)-len(score)-1)} ##\n"
+        out += '#'*width + '\n'
         out += '\n'.join([str(x) for x in self.matches])
         out += '\n'
         return out
+
 class Match(Base):
     __tablename__ = "match"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -156,8 +160,8 @@ class Persistency:
             new_players: Dict[str, Player] = {}
             new_events: Dict[str, TTEvent] = {}
             for instance in [x for x in session.new if isinstance(x, Match)]:
-                instance.one = find_or_create_by_name(session, instance.one.name, Player, new_players)
-                instance.two = find_or_create_by_name(session, instance.two.name, Player, new_players)
+                instance.one = find_or_create_by_name(session, instance.one.name, Player, new_players, score=instance.one.score)
+                instance.two = find_or_create_by_name(session, instance.two.name, Player, new_players, score=instance.two.score)
                 instance.event = find_or_create_by_name(session, instance.event.name, TTEvent, new_events, date=instance.event.date)
 
 

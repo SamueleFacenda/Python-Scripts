@@ -5,7 +5,7 @@ from functools import partial
 from icecream import ic
 import json
 from datetime import datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from .entities import Match, Player, ChampionshipMatch, Tournament, Persistency, TTEvent
 from .threadutils import WaitableThreadPool
@@ -108,33 +108,43 @@ def fetch_player_id(name, classifica=211):
     res = res.json()
     # some players are two times in the database
     ids = [x["id"] for x in res]
-    for id in ids:
-        if validate_player_id(id, classifica):
-            return id
-    raise ValueError(f"Player {name} not found")
+    id = filter(partial(validate_player_id, classifica=classifica), ids)
+    try:
+        return next(id)
+    except StopIteration:
+        raise ValueError(f"Player {name} not found in classifica {classifica}")
 
 NO_ATLETA_STR = "Non sono presenti dettagli per questo atleta in questa classifica!"
 @cached
 def validate_player_id(id, classifica=211):
-    res = r.get(URL + "risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}).text
-    return NO_ATLETA_STR not in res
+    #res = r.get(URL + "risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}).text
+    soup = make_soup_res("risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}, headers={"X-Requested-With": "XMLHttpRequest"})
+    # get body text
+    res = soup.body.text
+    return NO_ATLETA_STR != res.strip()
 
 @cached
 def fetch_player_score(id, classifica):
     soup = make_soup_res("risultati/new_rank/dettaglioatleta_unica.php", params={"ATLETA": id, "ID_CLASS": classifica, "ZU": 1, "AVVERSARIO": 0}, headers={"X-Requested-With": "XMLHttpRequest"})
-    # the only p tag with class "classifica"
-    try:
-        return int(soup.find("p", {"class": "classifica"}).text)
-    except:
-        ic(id, classifica, soup)
-        raise
+    text = soup.find("p", class_="style_scheda2", string=re.compile("punti")).text
+    points = re.search(r"\d+,\d+", text).group(0).replace(",", ".")
+    return int(float(points))
 
 ## Match parsers ##
 
 def make_player(name):
     classifica = fetch_last_classifica()["ID_CLASS"]
-    id = fetch_player_id(name, classifica)
-    score = fetch_player_score(id, classifica)
+    if "-" in name or "/" in name:
+        # double match player
+        return Player(name)
+
+    try:
+        id = fetch_player_id(name, classifica)
+        score = fetch_player_score(id, classifica)
+    except ValueError:
+        #player not in the classifica
+        return Player(name)
+    
     return Player(name, score)
 
 def make_match_from_girone_row(row):
