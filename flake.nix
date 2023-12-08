@@ -45,6 +45,26 @@
               ];
 
             };
+            prog = pkgs.stdenv.mkDerivation {
+              pname = "prog";
+              src = ./.;
+              inherit version;
+  
+              nativeBuildInputs = with pkgs; [
+                gcc
+              ];
+  
+              buildPhase = ''
+                mkdir build
+                g++ prog/main.cpp -o build/main
+              '';
+  
+              installPhase = ''
+                mkdir -p $out/bin
+                find ./build -type f \
+                  -exec mv -t "''${out}/bin" "{}" +
+              '';
+            };
           };
           
         apps = {
@@ -71,12 +91,12 @@
               ]))
             ];
 
-            #shellHook = ''
-            #  exec zsh
-            #'';
-
           };
-
+          cpp = pkgs.mkShell {
+            nativeBuildInputs = with pkgs; [
+              gcc
+            ];
+          };
         };
       }
     );
