@@ -6,8 +6,6 @@ using namespace std;
 const int IN_MAX_LEN = 100;
 
 bool isMIU(char word[]) {
-    if (word[0] != 'M')
-        return false;
 
     int iCount=0, i;
     bool isAfterI = false, iAfterMValid = true;
@@ -27,7 +25,7 @@ bool isMIU(char word[]) {
     if (!iAfterMValid)
         return false;
 
-    if (word[i-1] != 'U')
+    if (word[0] == 'M' && word[i-1] != 'U')
         return false;
 
     return !iCount || iCount & 1;
