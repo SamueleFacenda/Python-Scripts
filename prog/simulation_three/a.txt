@@ -1,0 +1,2 @@
+Testo in cui contare le occorrenze.
+Altro testo in cui CONTARE le occorrenze.
