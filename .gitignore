@@ -9,3 +9,5 @@ __pycache__
 .direnv
 .vscode
 /univr-scraper/pdfjs
+/olicyber/bandit
+a.out
