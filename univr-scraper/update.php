@@ -3,7 +3,7 @@
 libxml_use_internal_errors(true);
 
 $url = 'https://www.corsi.univr.it/?ent=cs&id=474&menu=studiare&tab=orario-lezioni&lang=it';
-$match = 'Orario 1° anno 1° semestre';
+$match = 'Orario 1° anno';
 $xquery = "//a[contains(.,'$match')]";
 
 // Create DOMdocument from URL

@@ -70,7 +70,6 @@ void allocateRec(char** out, int i, int size) {
 char** codici(int size, int &max) {
     // uso l'ordine inverso nella matrice, rimane un codice di gray valido (aggiungo le colonne dopo)
     max = 1<<size;
-    std::cout << "max: " << max << std::endl;
     char **out = new char*[max];
     allocateRec(out, max-1, size);
     fillGray(out, size);
