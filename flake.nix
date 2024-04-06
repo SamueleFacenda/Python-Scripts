@@ -1,5 +1,5 @@
 {
-  description = "An full-optional python flake template";
+  description = "Random python scripts + plus something else";
 
   # Nixpkgs / NixOS version to use.
   inputs.nixpkgs.url = "nixpkgs/nixpkgs-unstable";
