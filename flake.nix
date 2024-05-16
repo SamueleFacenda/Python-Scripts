@@ -1,3 +1,4 @@
+# comment nix
 {
   description = "Random python scripts + plus something else";
 
@@ -21,7 +22,11 @@
     in
 
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = (nixpkgs.legacyPackages.${system}.extend overlay); in
+      let pkgs = (import nixpkgs {
+          config.allowUnfree = true;
+          inherit system;
+        }).extend overlay; 
+      in
       {
 
         packages = rec {
@@ -62,7 +67,7 @@
               installPhase = ''
                 mkdir -p $out/bin
                 find ./build -type f \
-                  -exec mv -t "''${out}/bin" "{}" +
+                  -exec mv -t "$out/bin" "{}" +
               '';
             };
           };
@@ -96,6 +101,65 @@
             nativeBuildInputs = with pkgs; [
               gcc
             ];
+          };
+          pwn = pkgs.mkShell {
+            packages = with pkgs; [
+              # misc
+              php
+              curl
+              git
+              jdk17
+              # ngrok
+              docker
+              docker-compose
+          
+              # stego
+              binwalk
+              stegsolve
+              zsteg
+              john
+          
+              # network
+              wireshark
+              tshark
+              # py pyshark
+          
+              # web
+              burpsuite
+              # postman
+          
+              # software
+              ht
+              ltrace
+              pwndbg
+              gdb
+              patchelf
+              elfutils
+              one_gadget
+              # seccomp-tools
+              ghidra
+              gdb
+          
+              # crypto
+              # sage
+              z3
+          
+              (python3.withPackages (ps: with ps; [
+                pillow
+                pycryptodome
+                pwntools
+                ropper
+                tqdm
+                gmpy2
+                sympy
+                pip
+                z3
+              ]))
+            ];
+          
+            shellHook = ''
+              echo "Ready to pwn!"
+            '';
           };
         };
       }
