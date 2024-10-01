@@ -4,10 +4,19 @@
 
   # Nixpkgs / NixOS version to use.
   inputs.nixpkgs.url = "nixpkgs/nixpkgs-unstable";
+  inputs.nixpkgs-gpu.url = "nixpkgs/nixos-24.05-small";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
+  
+  nixConfig = {
+    extra-substituters = [ "https://cuda-maintainers.cachix.org" "https://nix-community.cachix.org" ];
+    extra-trusted-public-keys = [ 
+      "cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=" 
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+    ];
+  };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, nixpkgs-gpu, flake-utils }:
     let
 
       # to work with older version of flakes
@@ -22,10 +31,16 @@
     in
 
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = (import nixpkgs {
+      let 
+        pkgs = (import nixpkgs {
           config.allowUnfree = true;
           inherit system;
         }).extend overlay; 
+        pkgs-gpu = (import nixpkgs-gpu {
+          config.allowUnfree = true;
+          config.cudaSupport = true;
+          inherit system;
+        });
       in
       {
 
@@ -160,6 +175,14 @@
             shellHook = ''
               echo "Ready to pwn!"
             '';
+          };
+          ai = pkgs-gpu.mkShell {
+            packages = [
+              (pkgs-gpu.python3.withPackages (ps: with ps; [
+                Keras
+                opencv4
+              ]))
+            ];
           };
         };
       }
