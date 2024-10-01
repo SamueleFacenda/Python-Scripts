@@ -181,6 +181,8 @@
               (pkgs-gpu.python3.withPackages (ps: with ps; [
                 Keras
                 opencv4
+                jupyterlab
+                notebook
               ]))
             ];
           };
