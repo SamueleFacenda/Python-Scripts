@@ -183,6 +183,8 @@
                 opencv4
                 jupyterlab
                 notebook
+                tqdm
+                ipywidgets
               ]))
             ];
           };
