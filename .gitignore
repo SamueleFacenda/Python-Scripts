@@ -13,6 +13,11 @@ __pycache__
 a.out
 /casual/scouts.csv
 .ipynb_checkpoints
-/olicyber/cyberchallenge/
+/olicyber/cyberchallenge/**
 *.rep/
 *.grp
+
+/.gpg_pass
+# Except encrypted .gpg files
+!/olicyber/cyberchallenge/**/*.gpg
+!/olicyber/cyberchallenge/**/
