@@ -13,3 +13,6 @@ __pycache__
 a.out
 /casual/scouts.csv
 .ipynb_checkpoints
+/olicyber/cyberchallenge/
+*.rep/
+*.grp

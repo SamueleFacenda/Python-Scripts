@@ -63,27 +63,6 @@
               nativeBuildInputs = with pkgs; [
                 python3.pkgs.setuptools
               ];
-
-            };
-            prog = pkgs.stdenv.mkDerivation {
-              pname = "prog";
-              src = ./.;
-              inherit version;
-  
-              nativeBuildInputs = with pkgs; [
-                gcc
-              ];
-  
-              buildPhase = ''
-                mkdir build
-                g++ prog/main.cpp -o build/main
-              '';
-  
-              installPhase = ''
-                mkdir -p $out/bin
-                find ./build -type f \
-                  -exec mv -t "$out/bin" "{}" +
-              '';
             };
           };
           
@@ -97,6 +76,7 @@
         devShells = {
           default = pkgs.mkShell {
             packages = with pkgs; [
+              rage
               php
               (python3.withPackages (ps: with ps; [
                 beautifulsoup4
@@ -114,11 +94,14 @@
           };
           cpp = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
+              rage
               gcc
             ];
           };
           pwn = pkgs.mkShell {
             packages = with pkgs; [
+              rage
+              
               # misc
               php
               curl
@@ -147,17 +130,32 @@
               ht
               ltrace
               pwndbg
-              gdb
               patchelf
               elfutils
               one_gadget
               # seccomp-tools
               ghidra
+              # ((ghidra.override { openjdk21 = jetbrains.jdk; }).overrideAttrs {
+              #   postPatch = ''
+              #     ls
+              #     # append VMARGS=-Dawt.toolkit.name=WLToolkit in Ghidra/RuntimeScripts/Common/support/launch.properties
+              #     echo "VMARGS=-Dawt.toolkit.name=WLToolkit" >> Ghidra/RuntimeScripts/Common/support/launch.properties
+              #   '';
+              # })
               gdb
+              gef
           
               # crypto
               # sage
               z3
+              (sage.override { 
+               	extraPythonPackages = ps: with ps; [ 
+              	 	pycryptodome 
+              		pwntools
+              		tqdm
+              	]; 
+              	requireSageTests = false;
+              })
           
               (python3.withPackages (ps: with ps; [
                 pillow
@@ -171,8 +169,12 @@
                 z3
               ]))
             ];
+            
+            PYTHONINTMAXSTRDIGITS=0;
           
             shellHook = ''
+              alias -- patch32='patchelf --set-interpreter "$(nix eval --raw nixpkgs#pkgsi686Linux.glibc)/lib/ld-linux.so.2"'
+              alias -- patch64='patchelf --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)"'
               echo "Ready to pwn!"
             '';
           };
