@@ -1,4 +1,4 @@
-# Random Files from my computer:computer:
+# Random Files from my computer :computer:
 
 Birthday Paradox:
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/SamueleFacenda/Python-Scripts/HEAD?labpath=casual%2FbirthdayParadox.ipynb)
@@ -15,7 +15,7 @@ some intresting ones:sunglasses::
 * pokemon, uses [pokeAPI](https://github.com/PokeAPI/pokeapi) to create an updated dataset with pokemons' stats
 * univr-scaper: take the latest updated timetable for the nurse course of univr at Trento, see [here](https://pastapizza.altervista.org/univr/renderer.php)
 * fitet: take all the results from the result fitet portal (italian table-tennis)
-* prog: cpp files for the programmation1 course at unitn
 * codeforces: cp solves
 * web_scripts: random python scripts for different web scarpings
-
+* olicyber: olicyber challenges exploits
+* olicyber/cyberchallenge: gpg encrypted cyberchallenge exploits

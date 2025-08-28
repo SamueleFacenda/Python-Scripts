@@ -92,12 +92,6 @@
             ];
 
           };
-          cpp = pkgs.mkShell {
-            nativeBuildInputs = with pkgs; [
-              gnupg
-              gcc
-            ];
-          };
           pwn = pkgs.mkShell {
             packages = with pkgs; [
               gnupg
