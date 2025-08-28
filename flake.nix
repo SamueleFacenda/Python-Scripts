@@ -165,6 +165,9 @@
                 tqdm
                 gmpy2
                 sympy
+                pyshark
+                pandas
+                openpyxl
                 pip
                 z3
               ]))

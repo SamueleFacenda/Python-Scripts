@@ -19,16 +19,23 @@ should_encrypt() {
   return 1
 }
 
-changed_files=$(git status --porcelain | awk '{print $2}' | grep "^olicyber/cyberchallenge/")
+SRC_DIR="olicyber/cyberchallenge"
 
-for f in $changed_files; do
-  if [[ -f "$f" ]] && should_encrypt "$f"; then
-    # echo "Encrypting $f..."
-    gpg --symmetric --batch --yes --cipher-algo AES256 \
-            --passphrase-file "$PASSFILE" \
-            -o "$f.gpg" "$f"
-    # rm "$f"
-  # else
-  #   echo "Skipping $f (not in allowed extensions)"
+
+find "$SRC_DIR" -type f | while read -r f; do
+  if should_encrypt "$f"; then
+    gpg_file="$f.gpg"
+
+    # Encrypt if .gpg does not exist, or source is newer
+    if [[ ! -f "$gpg_file" || "$f" -nt "$gpg_file" ]]; then
+      echo "Encrypting $f -> $gpg_file"
+      gpg --symmetric --batch --yes --cipher-algo AES256 \
+          --passphrase-file "$PASSFILE" \
+          -o "$gpg_file" "$f"
+      # rm "$f"   # uncomment if you want to remove the plaintext
+    else
+      # echo "Skipping $f (already up-to-date)"
+      true
+    fi
   fi
 done
