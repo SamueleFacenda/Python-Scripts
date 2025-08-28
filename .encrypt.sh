@@ -32,6 +32,7 @@ find "$SRC_DIR" -type f | while read -r f; do
       gpg --symmetric --batch --yes --cipher-algo AES256 \
           --passphrase-file "$PASSFILE" \
           -o "$gpg_file" "$f"
+      git add "$gpg_file"
       # rm "$f"   # uncomment if you want to remove the plaintext
     else
       # echo "Skipping $f (already up-to-date)"

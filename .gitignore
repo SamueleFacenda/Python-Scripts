@@ -21,3 +21,6 @@ a.out
 # Except encrypted .gpg files
 !/olicyber/cyberchallenge/**/*.gpg
 !/olicyber/cyberchallenge/**/
+
+/olicyber/cyberchallenge/final
+/olicyber/cyberchallenge/reverse/plugins
