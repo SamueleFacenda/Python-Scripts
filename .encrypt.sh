@@ -21,7 +21,6 @@ should_encrypt() {
 
 SRC_DIR="olicyber/cyberchallenge"
 
-
 find "$SRC_DIR" -type f | while read -r f; do
   if should_encrypt "$f"; then
     gpg_file="$f.gpg"
